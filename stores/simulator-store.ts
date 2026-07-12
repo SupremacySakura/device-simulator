@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { DeviceOrientation } from '../types/device';
 import type { IframeStatus, SimulatorScaleSetting, SimulatorSelection } from '../types/simulator';
+import { clampManualScale } from '../utils/device-scale';
 
 export interface PersistedSimulatorData {
   url: string;
@@ -137,7 +138,7 @@ export const useSimulatorStore = create<SimulatorStoreState>((set, get) => ({
       orientation: state.orientation === 'portrait' ? 'landscape' : 'portrait',
       selection: null,
     })),
-  setScale: (scale) => set({ scale }),
+  setScale: (scale) => set({ scale: scale === 'auto' ? scale : clampManualScale(scale) }),
   setResolvedScale: (resolvedScale) => set({ resolvedScale }),
   setShowSafeArea: (showSafeArea) => set({ showSafeArea }),
   setShowRulers: (showRulers) => set({ showRulers }),

@@ -27,13 +27,14 @@ import { useDeviceStore } from '../../stores/device-store';
 import { useHistoryStore } from '../../stores/history-store';
 import { useSimulatorStore } from '../../stores/simulator-store';
 import { toggleWorkspacePanel } from '../../services/panel-layout-service';
-import type { SimulatorScaleSetting } from '../../types/simulator';
+import {
+  MAX_MANUAL_SCALE,
+  MIN_MANUAL_SCALE,
+  clampManualScale,
+  stepManualScale,
+} from '../../utils/device-scale';
 import { tryNormalizeUrl } from '../../utils/url';
 import { useToast } from '../common/ToastProvider';
-
-const SCALE_STEPS: readonly Exclude<SimulatorScaleSetting, 'auto'>[] = [
-  0.25, 0.5, 0.75, 1, 1.25, 1.5,
-];
 
 interface TopToolbarProps {
   onScreenshot: () => void;
@@ -55,7 +56,6 @@ export function TopToolbar({ onScreenshot, onCompare, onSettings, onClose }: Top
 
   const canGoBack = simulator.navigationIndex > 0;
   const canGoForward = simulator.navigationIndex < simulator.navigationStack.length - 1;
-  const scaleIndex = simulator.scale === 'auto' ? -1 : SCALE_STEPS.indexOf(simulator.scale);
   const displayScale = simulator.scale === 'auto' ? simulator.resolvedScale : simulator.scale;
 
   const deviceOptions = useMemo(
@@ -77,10 +77,7 @@ export function TopToolbar({ onScreenshot, onCompare, onSettings, onClose }: Top
   };
 
   const stepScale = (direction: -1 | 1) => {
-    const currentIndex = scaleIndex < 0 ? 2 : scaleIndex;
-    const next =
-      SCALE_STEPS[Math.max(0, Math.min(SCALE_STEPS.length - 1, currentIndex + direction))];
-    if (next) simulator.setScale(next);
+    simulator.setScale(stepManualScale(displayScale, direction));
   };
 
   return (
@@ -187,7 +184,7 @@ export function TopToolbar({ onScreenshot, onCompare, onSettings, onClose }: Top
         <IconButton
           label="缩小"
           size="sm"
-          disabled={scaleIndex === 0}
+          disabled={displayScale <= MIN_MANUAL_SCALE}
           onClick={() => stepScale(-1)}
         >
           <Minus className="size-4" />
@@ -196,14 +193,18 @@ export function TopToolbar({ onScreenshot, onCompare, onSettings, onClose }: Top
           type="button"
           className="min-w-11 text-center text-sm font-semibold text-[#2a2b31]"
           title={simulator.scale === 'auto' ? '自动适应画布' : '固定缩放比例'}
-          onClick={() => simulator.setScale(simulator.scale === 'auto' ? 0.75 : 'auto')}
+          onClick={() =>
+            simulator.setScale(
+              simulator.scale === 'auto' ? clampManualScale(simulator.resolvedScale) : 'auto',
+            )
+          }
         >
           {Math.round(displayScale * 100)}%
         </button>
         <IconButton
           label="放大"
           size="sm"
-          disabled={scaleIndex === SCALE_STEPS.length - 1}
+          disabled={displayScale >= MAX_MANUAL_SCALE}
           onClick={() => stepScale(1)}
         >
           <Plus className="size-4" />

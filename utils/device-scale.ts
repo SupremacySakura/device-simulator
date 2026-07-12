@@ -1,5 +1,8 @@
 export const MIN_AUTO_SCALE = 0.25;
 export const MAX_AUTO_SCALE = 1.5;
+export const MIN_MANUAL_SCALE = 0.1;
+export const MAX_MANUAL_SCALE = 3;
+export const MANUAL_SCALE_STEP = 0.1;
 
 export interface AutoScaleOptions {
   minScale?: number;
@@ -63,6 +66,30 @@ export function clampScale(
   }
 
   return Math.min(maxScale, Math.max(minScale, scale));
+}
+
+export function isManualScale(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value >= MIN_MANUAL_SCALE &&
+    value <= MAX_MANUAL_SCALE
+  );
+}
+
+export function clampManualScale(scale: number): number {
+  return clampScale(scale, MIN_MANUAL_SCALE, MAX_MANUAL_SCALE);
+}
+
+export function stepManualScale(
+  current: number,
+  direction: -1 | 1,
+  step = MANUAL_SCALE_STEP,
+): number {
+  if (!Number.isFinite(step) || step <= 0) {
+    throw new RangeError('step must be a finite number greater than zero.');
+  }
+  return Math.round(clampManualScale(current + direction * step) * 100) / 100;
 }
 
 export function calculateAutoScale(input: AutoScaleInput): number;

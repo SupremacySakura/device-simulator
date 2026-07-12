@@ -2,7 +2,9 @@ import type { DeviceOrientation } from './device';
 
 export type IframeStatus = 'idle' | 'loading' | 'loaded' | 'error' | 'blocked';
 
-export type SimulatorScale = 0.25 | 0.5 | 0.75 | 1 | 1.25 | 1.5;
+export type CanvasTool = 'select' | 'pan';
+
+export type SimulatorScale = number;
 
 export type SimulatorScaleSetting = SimulatorScale | 'auto';
 

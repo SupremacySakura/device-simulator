@@ -20,13 +20,14 @@ import {
 } from '../stores/simulator-store';
 import { DEFAULT_SETTINGS, type DeviceSimulatorSettings } from '../constants/default-settings';
 import type { SimulatorScaleSetting } from '../types/simulator';
+import { isManualScale } from '../utils/device-scale';
 import { tryNormalizeUrl } from '../utils/url';
 import { validateDeviceProfile } from '../utils/validation';
 
 let initialization: Promise<void> | null = null;
 let subscriptionsReady = false;
 
-function isSimulatorScale(value: unknown): value is SimulatorScaleSetting {
+function isDefaultScale(value: unknown): value is SimulatorScaleSetting {
   return (
     value === 'auto' ||
     value === 0.25 ||
@@ -36,6 +37,10 @@ function isSimulatorScale(value: unknown): value is SimulatorScaleSetting {
     value === 1.25 ||
     value === 1.5
   );
+}
+
+function isSimulatorScale(value: unknown): value is SimulatorScaleSetting {
+  return value === 'auto' || isManualScale(value);
 }
 
 function debounceWrite<T>(write: (data: T) => Promise<void>, delay = 180) {
@@ -72,7 +77,7 @@ function parseSettings(value: unknown): DeviceSimulatorSettings | null {
   const candidate = value as Partial<DeviceSimulatorSettings>;
   const layout = candidate.layout;
   if (typeof candidate.defaultDeviceId !== 'string') return null;
-  if (!isSimulatorScale(candidate.defaultScale)) return null;
+  if (!isDefaultScale(candidate.defaultScale)) return null;
   if (
     typeof candidate.showShadow !== 'boolean' ||
     typeof candidate.showGrid !== 'boolean' ||
@@ -190,7 +195,7 @@ export function initializeStores(): Promise<void> {
     if (parsedSimulator === null) {
       const simulatorState = useSimulatorStore.getState();
       simulatorState.setScale(
-        isSimulatorScale(parsedSettings.defaultScale) ? parsedSettings.defaultScale : 'auto',
+        isDefaultScale(parsedSettings.defaultScale) ? parsedSettings.defaultScale : 'auto',
       );
       simulatorState.setShowShadow(parsedSettings.showShadow);
       simulatorState.setShowGrid(parsedSettings.showGrid);

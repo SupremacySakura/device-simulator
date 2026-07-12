@@ -33,7 +33,7 @@ const SUPPORTED_SCALES: ReadonlySet<number> = new Set([0.25, 0.5, 0.75, 1, 1.25,
 
 function normalizeScale(value: number | 'auto'): SimulatorScaleSetting {
   if (value === 'auto') return 'auto';
-  return SUPPORTED_SCALES.has(value) ? (value as SimulatorScaleSetting) : 'auto';
+  return SUPPORTED_SCALES.has(value) ? value : 'auto';
 }
 
 function createDraft(settings: DeviceSimulatorSettings): SettingsDraft {

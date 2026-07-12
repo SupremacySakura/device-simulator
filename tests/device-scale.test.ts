@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   MAX_AUTO_SCALE,
+  MAX_MANUAL_SCALE,
   MIN_AUTO_SCALE,
+  MIN_MANUAL_SCALE,
   calculateAutoScale,
+  clampManualScale,
   clampScale,
   getScaledSize,
+  isManualScale,
+  stepManualScale,
 } from '../utils/device-scale';
 
 describe('calculateAutoScale', () => {
@@ -49,5 +54,15 @@ describe('calculateAutoScale', () => {
 
   it('calculates the visual size without changing the source viewport dimensions', () => {
     expect(getScaledSize(393, 852, 0.75)).toEqual({ width: 294.75, height: 639 });
+  });
+
+  it('supports continuous manual zoom with stable stepping and bounds', () => {
+    expect(isManualScale(0.83)).toBe(true);
+    expect(isManualScale(MIN_MANUAL_SCALE - 0.01)).toBe(false);
+    expect(isManualScale(MAX_MANUAL_SCALE + 0.01)).toBe(false);
+    expect(stepManualScale(0.83, 1)).toBe(0.93);
+    expect(stepManualScale(0.83, -1, 0.05)).toBe(0.78);
+    expect(clampManualScale(100)).toBe(MAX_MANUAL_SCALE);
+    expect(clampManualScale(0.01)).toBe(MIN_MANUAL_SCALE);
   });
 });
