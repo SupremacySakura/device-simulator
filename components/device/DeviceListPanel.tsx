@@ -1,9 +1,10 @@
-import { Download, Plus, Upload } from 'lucide-react';
+import { Download, PanelLeftClose, Plus, Upload } from 'lucide-react';
 import { useMemo } from 'react';
 import { useDeviceStore } from '../../stores/device-store';
 import { useHistoryStore } from '../../stores/history-store';
 import type { DeviceProfile } from '../../types/device';
 import { Button } from '../common/Button';
+import { IconButton } from '../common/IconButton';
 import { DeviceCategoryTabs } from './DeviceCategoryTabs';
 import { DeviceList } from './DeviceList';
 import { DeviceSearch } from './DeviceSearch';
@@ -15,6 +16,7 @@ interface DeviceListPanelProps {
   onExport: (device: DeviceProfile) => void;
   onDelete: (device: DeviceProfile) => void;
   onImportExport: () => void;
+  onCollapse: () => void;
 }
 
 export function DeviceListPanel({
@@ -24,6 +26,7 @@ export function DeviceListPanel({
   onExport,
   onDelete,
   onImportExport,
+  onCollapse,
 }: DeviceListPanelProps) {
   const store = useDeviceStore();
   const recordDevice = useHistoryStore((state) => state.recordDevice);
@@ -55,21 +58,37 @@ export function DeviceListPanel({
   };
 
   return (
-    <aside className="flex h-full w-[268px] shrink-0 flex-col border-r border-[#e7e7ec] bg-white">
+    <aside
+      id="device-list-panel"
+      aria-label="设备列表面板"
+      className="flex h-full w-[268px] shrink-0 flex-col border-r border-[#e7e7ec] bg-white"
+    >
       <div className="shrink-0 px-4 pt-5 pb-3">
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h2 className="text-base font-semibold text-[#202127]">设备列表</h2>
             <p className="mt-0.5 text-[11px] text-[#8b8d96]">{store.devices.length} 个可用配置</p>
           </div>
-          <Button
-            className="!size-8 !px-0"
-            aria-label="添加设备"
-            title="添加自定义设备"
-            onClick={onAdd}
-          >
-            <Plus className="size-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <IconButton
+              label="收起设备列表"
+              size="sm"
+              aria-controls="device-list-panel"
+              aria-expanded="true"
+              className="max-[960px]:hidden"
+              onClick={onCollapse}
+            >
+              <PanelLeftClose className="size-4" />
+            </IconButton>
+            <Button
+              className="!size-8 !px-0"
+              aria-label="添加设备"
+              title="添加自定义设备"
+              onClick={onAdd}
+            >
+              <Plus className="size-4" />
+            </Button>
+          </div>
         </div>
         <DeviceSearch value={store.searchQuery} onChange={store.setSearchQuery} />
         <div className="mt-3">

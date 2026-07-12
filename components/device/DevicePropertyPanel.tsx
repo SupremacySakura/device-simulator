@@ -1,4 +1,4 @@
-import { Copy, LockKeyhole, Pencil, RotateCw, Smartphone } from 'lucide-react';
+import { Copy, LockKeyhole, PanelRightClose, Pencil, RotateCw, Smartphone } from 'lucide-react';
 import { useEffect, useRef, type ReactNode } from 'react';
 import {
   createCameraFromTemplate,
@@ -23,6 +23,7 @@ import { SafeAreaEditor } from '../editor/SafeAreaEditor';
 interface DevicePropertyPanelProps {
   onEdit: (device: DeviceProfile) => void;
   onDuplicate: (device: DeviceProfile) => void;
+  onCollapse: () => void;
 }
 
 const CATEGORY_LABELS: Record<DeviceCategory, string> = {
@@ -46,7 +47,7 @@ function cloneSafeArea(value: SafeAreaInsets): SafeAreaInsets {
   return { ...value };
 }
 
-export function DevicePropertyPanel({ onEdit, onDuplicate }: DevicePropertyPanelProps) {
+export function DevicePropertyPanel({ onEdit, onDuplicate, onCollapse }: DevicePropertyPanelProps) {
   const device = useDeviceStore((state) =>
     state.devices.find((item) => item.id === state.currentDeviceId),
   );
@@ -76,7 +77,21 @@ export function DevicePropertyPanel({ onEdit, onDuplicate }: DevicePropertyPanel
 
   if (!device || !viewport) {
     return (
-      <aside className="grid h-full w-[340px] shrink-0 place-items-center border-l border-[#e7e7ec] bg-white p-6 text-center">
+      <aside
+        id="device-property-panel"
+        className="relative grid h-full w-[340px] shrink-0 place-items-center border-l border-[#e7e7ec] bg-white p-6 text-center"
+        aria-label="设备属性面板"
+      >
+        <IconButton
+          label="收起设备信息"
+          size="sm"
+          aria-controls="device-property-panel"
+          aria-expanded="true"
+          className="absolute top-3 right-3 max-[1160px]:hidden"
+          onClick={onCollapse}
+        >
+          <PanelRightClose className="size-4" />
+        </IconButton>
         <div>
           <Smartphone className="mx-auto size-7 text-[#aaa7b6]" aria-hidden="true" />
           <h2 className="mt-3 text-sm font-semibold text-[#34353c]">未选择设备</h2>
@@ -141,6 +156,7 @@ export function DevicePropertyPanel({ onEdit, onDuplicate }: DevicePropertyPanel
 
   return (
     <aside
+      id="device-property-panel"
       className="flex h-full w-[340px] shrink-0 flex-col border-l border-[#e7e7ec] bg-white"
       aria-label="设备属性面板"
     >
@@ -167,9 +183,21 @@ export function DevicePropertyPanel({ onEdit, onDuplicate }: DevicePropertyPanel
               </div>
               <p className="mt-1 truncate text-xs text-[#777984]">{device.name}</p>
             </div>
-            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#f0edff] text-[#6547f5]">
-              <Smartphone className="size-[18px]" aria-hidden="true" />
-            </span>
+            <div className="flex shrink-0 items-center gap-1">
+              <span className="grid size-9 place-items-center rounded-xl bg-[#f0edff] text-[#6547f5]">
+                <Smartphone className="size-[18px]" aria-hidden="true" />
+              </span>
+              <IconButton
+                label="收起设备信息"
+                size="sm"
+                aria-controls="device-property-panel"
+                aria-expanded="true"
+                className="max-[1160px]:hidden"
+                onClick={onCollapse}
+              >
+                <PanelRightClose className="size-4" />
+              </IconButton>
+            </div>
           </div>
 
           <dl className="rounded-xl border border-[#e7e7ec] bg-[#fafafd] px-3 py-2">

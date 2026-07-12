@@ -19,6 +19,7 @@ import {
   createDeviceExportBlob,
   buildDeviceExportFilename,
 } from '../../services/import-export-service';
+import { setWorkspacePanelCollapsed } from '../../services/panel-layout-service';
 import { captureElementFromVisibleTab, downloadBlob } from '../../services/screenshot-service';
 import { useDeviceStore } from '../../stores/device-store';
 import { useHistoryStore } from '../../stores/history-store';
@@ -141,6 +142,10 @@ export function App() {
   return (
     <>
       <AppShell
+        leftPanelCollapsed={simulator.leftPanelCollapsed}
+        rightPanelCollapsed={simulator.rightPanelCollapsed}
+        onExpandLeftPanel={() => setWorkspacePanelCollapsed('left', false)}
+        onExpandRightPanel={() => setWorkspacePanelCollapsed('right', false)}
         toolbar={
           <TopToolbar
             onScreenshot={() => void takeScreenshot()}
@@ -170,22 +175,23 @@ export function App() {
           />
         }
         leftPanel={
-          simulator.leftPanelCollapsed ? undefined : (
-            <DeviceListPanel
-              onAdd={requestAdd}
-              onEdit={requestEdit}
-              onDuplicate={requestDuplicate}
-              onExport={exportDevice}
-              onDelete={setDeleteDevice}
-              onImportExport={() => setImportExportOpen(true)}
-            />
-          )
+          <DeviceListPanel
+            onAdd={requestAdd}
+            onEdit={requestEdit}
+            onDuplicate={requestDuplicate}
+            onExport={exportDevice}
+            onDelete={setDeleteDevice}
+            onImportExport={() => setImportExportOpen(true)}
+            onCollapse={() => setWorkspacePanelCollapsed('left', true)}
+          />
         }
         canvas={<DeviceCanvas />}
         rightPanel={
-          simulator.rightPanelCollapsed ? undefined : (
-            <DevicePropertyPanel onEdit={requestEdit} onDuplicate={requestDuplicate} />
-          )
+          <DevicePropertyPanel
+            onEdit={requestEdit}
+            onDuplicate={requestDuplicate}
+            onCollapse={() => setWorkspacePanelCollapsed('right', true)}
+          />
         }
       />
 

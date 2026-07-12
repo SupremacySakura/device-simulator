@@ -9,7 +9,9 @@ import {
   Minus,
   MonitorSmartphone,
   PanelLeftClose,
+  PanelLeftOpen,
   PanelRightClose,
+  PanelRightOpen,
   Plus,
   RefreshCw,
   Ruler,
@@ -24,6 +26,7 @@ import { IconButton } from '../common/IconButton';
 import { useDeviceStore } from '../../stores/device-store';
 import { useHistoryStore } from '../../stores/history-store';
 import { useSimulatorStore } from '../../stores/simulator-store';
+import { toggleWorkspacePanel } from '../../services/panel-layout-service';
 import type { SimulatorScaleSetting } from '../../types/simulator';
 import { tryNormalizeUrl } from '../../utils/url';
 import { useToast } from '../common/ToastProvider';
@@ -242,16 +245,28 @@ export function TopToolbar({ onScreenshot, onCompare, onSettings, onClose }: Top
 
       <div className="hidden shrink-0 items-center min-[1500px]:flex">
         <IconButton
-          label={simulator.leftPanelCollapsed ? '展开设备面板' : '折叠设备面板'}
-          onClick={() => simulator.setLeftPanelCollapsed(!simulator.leftPanelCollapsed)}
+          label={simulator.leftPanelCollapsed ? '展开设备列表' : '收起设备列表'}
+          aria-controls="device-list-panel"
+          aria-expanded={!simulator.leftPanelCollapsed}
+          onClick={() => toggleWorkspacePanel('left')}
         >
-          <PanelLeftClose className="size-[18px]" />
+          {simulator.leftPanelCollapsed ? (
+            <PanelLeftOpen className="size-[18px]" />
+          ) : (
+            <PanelLeftClose className="size-[18px]" />
+          )}
         </IconButton>
         <IconButton
-          label={simulator.rightPanelCollapsed ? '展开属性面板' : '折叠属性面板'}
-          onClick={() => simulator.setRightPanelCollapsed(!simulator.rightPanelCollapsed)}
+          label={simulator.rightPanelCollapsed ? '展开设备信息' : '收起设备信息'}
+          aria-controls="device-property-panel"
+          aria-expanded={!simulator.rightPanelCollapsed}
+          onClick={() => toggleWorkspacePanel('right')}
         >
-          <PanelRightClose className="size-[18px]" />
+          {simulator.rightPanelCollapsed ? (
+            <PanelRightOpen className="size-[18px]" />
+          ) : (
+            <PanelRightClose className="size-[18px]" />
+          )}
         </IconButton>
       </div>
 
