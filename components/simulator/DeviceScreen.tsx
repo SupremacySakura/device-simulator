@@ -1,5 +1,6 @@
 import type { DeviceViewportConfig } from '../../types/device';
 import type { IframeStatus } from '../../types/simulator';
+import type { Ref } from 'react';
 import { CameraLayer } from './CameraLayer';
 import { DisplayFeatureLayer } from './DisplayFeatureLayer';
 import { SafeAreaOverlay } from './SafeAreaOverlay';
@@ -9,10 +10,16 @@ interface DeviceScreenProps {
   viewport: DeviceViewportConfig;
   url: string;
   reloadKey: number;
+  observedUrl?: string | null;
   iframeStatus: IframeStatus;
   iframeMessage: string;
   scale: number;
   showSafeArea: boolean;
+  cameraVisible?: boolean;
+  displayFeaturesVisible?: boolean;
+  iframeTitle?: string;
+  iframeName?: string;
+  iframeRef?: Ref<HTMLIFrameElement>;
   selectedCameraId: string | null;
   selectedFeatureId: string | null;
   editable: boolean;
@@ -31,10 +38,16 @@ export function DeviceScreen({
   viewport,
   url,
   reloadKey,
+  observedUrl = null,
   iframeStatus,
   iframeMessage,
   scale,
   showSafeArea,
+  cameraVisible = true,
+  displayFeaturesVisible = true,
+  iframeTitle,
+  iframeName,
+  iframeRef,
   selectedCameraId,
   selectedFeatureId,
   editable,
@@ -61,11 +74,15 @@ export function DeviceScreen({
       <SimulatorIframe
         url={url}
         reloadKey={reloadKey}
+        observedUrl={observedUrl}
         status={iframeStatus}
         message={iframeMessage}
         interactionBlocked={dragging}
         onStatusChange={onStatusChange}
         onReload={onReload}
+        {...(iframeTitle === undefined ? {} : { title: iframeTitle })}
+        {...(iframeName === undefined ? {} : { name: iframeName })}
+        {...(iframeRef === undefined ? {} : { iframeRef })}
       />
       <SafeAreaOverlay
         insets={viewport.safeArea}
@@ -73,22 +90,26 @@ export function DeviceScreen({
         height={viewport.height}
         visible={showSafeArea}
       />
-      <CameraLayer
-        viewport={viewport}
-        scale={scale}
-        selectedId={selectedCameraId}
-        editable={editable}
-        onSelect={onSelectCamera}
-        onMove={onMoveCamera}
-        onDelete={onDeleteCamera}
-        onDraggingChange={onDraggingChange}
-      />
-      <DisplayFeatureLayer
-        viewport={viewport}
-        selectedId={selectedFeatureId}
-        editable={editable}
-        onSelect={onSelectFeature}
-      />
+      {cameraVisible ? (
+        <CameraLayer
+          viewport={viewport}
+          scale={scale}
+          selectedId={selectedCameraId}
+          editable={editable}
+          onSelect={onSelectCamera}
+          onMove={onMoveCamera}
+          onDelete={onDeleteCamera}
+          onDraggingChange={onDraggingChange}
+        />
+      ) : null}
+      {displayFeaturesVisible ? (
+        <DisplayFeatureLayer
+          viewport={viewport}
+          selectedId={selectedFeatureId}
+          editable={editable}
+          onSelect={onSelectFeature}
+        />
+      ) : null}
     </div>
   );
 }

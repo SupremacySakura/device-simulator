@@ -1,8 +1,10 @@
 import { browser } from 'wxt/browser';
 import { openSimulatorInCurrentTab } from '../services/message-service';
+import { installCompareRuntimeRouter } from '../services/compare-runtime-service';
 import { isExtensionMessage } from '../utils/message';
 
 export default defineBackground(() => {
+  installCompareRuntimeRouter();
   browser.runtime.onMessage.addListener((message: unknown) => {
     if (!isExtensionMessage(message)) return;
     if (message.type === 'PING') {

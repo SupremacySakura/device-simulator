@@ -12,6 +12,11 @@ interface AppShellProps {
   rightPanel: ReactNode;
   rightPanelCollapsed: boolean;
   onExpandRightPanel: () => void;
+  leftPanelId?: string;
+  leftPanelLabel?: string;
+  rightPanelId?: string;
+  rightPanelLabel?: string;
+  mainClassName?: string;
 }
 
 function useMediaQuery(query: string): boolean {
@@ -38,6 +43,11 @@ export function AppShell({
   rightPanel,
   rightPanelCollapsed,
   onExpandRightPanel,
+  leftPanelId = 'device-list-panel',
+  leftPanelLabel = '设备列表',
+  rightPanelId = 'device-property-panel',
+  rightPanelLabel = '设备信息',
+  mainClassName = 'p-2.5',
 }: AppShellProps) {
   const compactLeft = useMediaQuery('(max-width: 960px)');
   const compactRight = useMediaQuery('(max-width: 1160px)');
@@ -134,14 +144,14 @@ export function AppShell({
       <div className="flex min-h-0 min-w-0 flex-1">
         {navigation}
         {!leftPanelCollapsed && !compactLeft ? <div>{leftPanel}</div> : null}
-        <main className="flex min-h-0 min-w-0 flex-1 p-2.5">{canvas}</main>
+        <main className={`flex min-h-0 min-w-0 flex-1 ${mainClassName}`}>{canvas}</main>
         {!rightPanelCollapsed && !compactRight ? <div>{rightPanel}</div> : null}
 
         <div ref={leftTriggerRef} className="fixed top-[72px] left-20 z-40">
           {leftPanelCollapsed ? (
             <IconButton
-              label="展开设备列表"
-              aria-controls="device-list-panel"
+              label={`展开${leftPanelLabel}`}
+              aria-controls={leftPanelId}
               aria-expanded="false"
               className="!border-[#dcd8f4] !bg-white text-[#6045df] shadow-lg"
               onClick={expandLeftPanel}
@@ -150,8 +160,8 @@ export function AppShell({
             </IconButton>
           ) : compactLeft ? (
             <IconButton
-              label="打开设备列表"
-              aria-controls="device-list-panel"
+              label={`打开${leftPanelLabel}`}
+              aria-controls={leftPanelId}
               aria-expanded={compactLeftOpen}
               className="!border-[#dedee5] !bg-white shadow-lg"
               onClick={openCompactLeft}
@@ -164,8 +174,8 @@ export function AppShell({
         <div ref={rightTriggerRef} className="fixed top-[72px] right-2 z-40">
           {rightPanelCollapsed ? (
             <IconButton
-              label="展开设备信息"
-              aria-controls="device-property-panel"
+              label={`展开${rightPanelLabel}`}
+              aria-controls={rightPanelId}
               aria-expanded="false"
               className="!border-[#dcd8f4] !bg-white text-[#6045df] shadow-lg"
               onClick={expandRightPanel}
@@ -174,8 +184,8 @@ export function AppShell({
             </IconButton>
           ) : compactRight ? (
             <IconButton
-              label="打开设备信息"
-              aria-controls="device-property-panel"
+              label={`打开${rightPanelLabel}`}
+              aria-controls={rightPanelId}
               aria-expanded={compactRightOpen}
               className="!border-[#dedee5] !bg-white shadow-lg"
               onClick={openCompactRight}
@@ -190,19 +200,19 @@ export function AppShell({
             ref={leftDialogRef}
             role="dialog"
             aria-modal="true"
-            aria-label="设备列表"
+            aria-label={leftPanelLabel}
             className="fixed inset-x-0 top-16 bottom-0 z-50"
           >
             <button
               type="button"
-              aria-label="点击遮罩关闭设备列表"
+              aria-label={`点击遮罩关闭${leftPanelLabel}`}
               className="absolute inset-0 left-[72px] bg-black/20 backdrop-blur-[1px]"
               onClick={closeCompactLeft}
             />
             <div className="absolute top-0 bottom-0 left-[72px] shadow-2xl">
               {leftPanel}
               <IconButton
-                label="关闭设备列表"
+                label={`关闭${leftPanelLabel}`}
                 data-panel-drawer-close="true"
                 className="absolute top-3 right-[-44px] !border-[#dedee5] !bg-white shadow-sm"
                 onClick={closeCompactLeft}
@@ -218,19 +228,19 @@ export function AppShell({
             ref={rightDialogRef}
             role="dialog"
             aria-modal="true"
-            aria-label="设备信息"
+            aria-label={rightPanelLabel}
             className="fixed inset-x-0 top-16 bottom-0 z-50"
           >
             <button
               type="button"
-              aria-label="点击遮罩关闭设备信息"
+              aria-label={`点击遮罩关闭${rightPanelLabel}`}
               className="absolute inset-0 left-[72px] bg-black/20 backdrop-blur-[1px]"
               onClick={closeCompactRight}
             />
             <div className="absolute top-0 right-0 bottom-0 shadow-2xl">
               {rightPanel}
               <IconButton
-                label="关闭设备信息"
+                label={`关闭${rightPanelLabel}`}
                 data-panel-drawer-close="true"
                 className="absolute top-3 left-[-44px] !border-[#dedee5] !bg-white shadow-sm"
                 onClick={closeCompactRight}

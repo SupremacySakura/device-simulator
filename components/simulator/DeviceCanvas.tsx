@@ -19,8 +19,7 @@ import { IconButton } from '../common/IconButton';
 import { useToast } from '../common/ToastProvider';
 import { CanvasRuler } from './CanvasRuler';
 import { CanvasToolbar } from './CanvasToolbar';
-import { DeviceFrame } from './DeviceFrame';
-import { DeviceScaleWrapper } from './DeviceScaleWrapper';
+import { DevicePreview } from './DevicePreview';
 
 const BACKGROUNDS = ['#ffffff', '#f9fafb', '#eef0f4', '#24252b', '#dfd9cd'] as const;
 
@@ -269,10 +268,31 @@ export function DeviceCanvas() {
           willChange: isPanning ? 'transform' : undefined,
         }}
       >
-        <DeviceScaleWrapper
-          width={outerWidth}
-          height={outerHeight}
+        <DevicePreview
+          profile={device}
+          orientation={orientation}
+          url={simulator.url}
+          reloadKey={simulator.reloadKey}
+          iframeStatus={simulator.iframeStatus}
+          iframeMessage={simulator.iframeMessage}
           scale={scale}
+          safeAreaVisible={simulator.showSafeArea}
+          cameraVisible
+          displayFeaturesVisible
+          frameVisible
+          showShadow={simulator.showShadow}
+          selectedCameraId={selectedCameraId}
+          selectedFeatureId={selectedFeatureId}
+          editable={editable && tool === 'select'}
+          interactionBlocked={cameraDragging}
+          onStatusChange={simulator.setIframeState}
+          onReload={simulator.reload}
+          onSelectCamera={(id) => simulator.setSelection({ type: 'camera', id })}
+          onSelectFeature={(id) => simulator.setSelection({ type: 'display-feature', id })}
+          onMoveCamera={moveCamera}
+          onDeleteCamera={deleteCamera}
+          onDraggingChange={setCameraDragging}
+          onClearSelection={() => simulator.setSelection(null)}
           overlay={
             <CanvasRuler
               width={viewport.width}
@@ -283,31 +303,7 @@ export function DeviceCanvas() {
               visible={simulator.showRulers}
             />
           }
-        >
-          <DeviceFrame
-            device={device}
-            viewport={viewport}
-            url={simulator.url}
-            reloadKey={simulator.reloadKey}
-            iframeStatus={simulator.iframeStatus}
-            iframeMessage={simulator.iframeMessage}
-            scale={scale}
-            showSafeArea={simulator.showSafeArea}
-            showShadow={simulator.showShadow}
-            selectedCameraId={selectedCameraId}
-            selectedFeatureId={selectedFeatureId}
-            editable={editable && tool === 'select'}
-            dragging={cameraDragging}
-            onStatusChange={simulator.setIframeState}
-            onReload={simulator.reload}
-            onSelectCamera={(id) => simulator.setSelection({ type: 'camera', id })}
-            onSelectFeature={(id) => simulator.setSelection({ type: 'display-feature', id })}
-            onMoveCamera={moveCamera}
-            onDeleteCamera={deleteCamera}
-            onDraggingChange={setCameraDragging}
-            onClearSelection={() => simulator.setSelection(null)}
-          />
-        </DeviceScaleWrapper>
+        />
       </div>
 
       {tool === 'pan' ? (

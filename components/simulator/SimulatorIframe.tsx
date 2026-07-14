@@ -1,16 +1,20 @@
 import { ExternalLink, LoaderCircle, RotateCcw, ShieldAlert } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState, type Ref } from 'react';
 import type { IframeStatus } from '../../types/simulator';
 import { Button } from '../common/Button';
 
 interface SimulatorIframeProps {
   url: string;
   reloadKey: number;
+  observedUrl?: string | null;
   status: IframeStatus;
   message: string;
   interactionBlocked: boolean;
   onStatusChange: (status: IframeStatus, message?: string) => void;
   onReload: () => void;
+  title?: string;
+  name?: string;
+  iframeRef?: Ref<HTMLIFrameElement>;
 }
 
 const BLOCKED_MESSAGE =
@@ -19,29 +23,49 @@ const BLOCKED_MESSAGE =
 export function SimulatorIframe({
   url,
   reloadKey,
+  observedUrl = null,
   status,
   message,
   interactionBlocked,
   onStatusChange,
   onReload,
+  title = '设备网页预览',
+  name,
+  iframeRef,
 }: SimulatorIframeProps) {
   const timeoutRef = useRef<number | null>(null);
+  const lastReloadKeyRef = useRef(reloadKey);
+  const [iframeUrl, setIframeUrl] = useState(url);
+  const onStatusChangeRef = useRef(onStatusChange);
+  onStatusChangeRef.current = onStatusChange;
 
-  const clearLoadTimeout = () => {
+  const clearLoadTimeout = useCallback(() => {
     if (timeoutRef.current === null) return;
     window.clearTimeout(timeoutRef.current);
     timeoutRef.current = null;
-  };
+  }, []);
+
+  const reloadRequested = lastReloadKeyRef.current !== reloadKey;
+  const renderedUrl = reloadRequested ? url : iframeUrl;
 
   useEffect(() => {
-    if (!url) return;
-    onStatusChange('loading');
+    if (lastReloadKeyRef.current !== reloadKey) {
+      lastReloadKeyRef.current = reloadKey;
+      setIframeUrl(url);
+      return;
+    }
+    if (observedUrl !== url) setIframeUrl(url);
+  }, [observedUrl, reloadKey, url]);
+
+  useEffect(() => {
+    if (!url || (observedUrl === url && !reloadRequested)) return;
+    onStatusChangeRef.current('loading');
     timeoutRef.current = window.setTimeout(() => {
       timeoutRef.current = null;
-      onStatusChange('blocked', BLOCKED_MESSAGE);
+      onStatusChangeRef.current('blocked', BLOCKED_MESSAGE);
     }, 9000);
     return clearLoadTimeout;
-  }, [onStatusChange, reloadKey, url]);
+  }, [clearLoadTimeout, observedUrl, reloadKey, reloadRequested, url]);
 
   if (!url) {
     return (
@@ -62,19 +86,21 @@ export function SimulatorIframe({
   return (
     <>
       <iframe
-        key={`${url}-${reloadKey}`}
-        title="设备网页预览"
-        src={url}
+        key={reloadKey}
+        title={title}
+        name={name}
+        ref={iframeRef}
+        src={renderedUrl}
         className="absolute inset-0 size-full border-0 bg-white"
         referrerPolicy="strict-origin-when-cross-origin"
         allow="clipboard-read; clipboard-write; fullscreen"
         onLoad={() => {
           clearLoadTimeout();
-          onStatusChange('loaded');
+          onStatusChangeRef.current('loaded');
         }}
         onError={() => {
           clearLoadTimeout();
-          onStatusChange('error', '页面加载失败，请检查 URL 和网络连接。');
+          onStatusChangeRef.current('error', '页面加载失败，请检查 URL 和网络连接。');
         }}
       />
       {status === 'loading' ? (

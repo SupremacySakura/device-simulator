@@ -7,6 +7,7 @@ import { SettingsDialog } from '../../components/common/SettingsDialog';
 import { useToast } from '../../components/common/ToastProvider';
 import { DeviceListPanel } from '../../components/device/DeviceListPanel';
 import { DevicePropertyPanel } from '../../components/device/DevicePropertyPanel';
+import { CompareWorkspace } from '../../components/compare/CompareWorkspace';
 import { DeviceEditorDialog } from '../../components/editor/DeviceEditorDialog';
 import { ImportExportDialog } from '../../components/editor/ImportExportDialog';
 import { AppShell } from '../../components/layout/AppShell';
@@ -22,6 +23,7 @@ import {
 import { setWorkspacePanelCollapsed } from '../../services/panel-layout-service';
 import { captureElementFromVisibleTab, downloadBlob } from '../../services/screenshot-service';
 import { useDeviceStore } from '../../stores/device-store';
+import { useCompareStore } from '../../stores/compare-store';
 import { useHistoryStore } from '../../stores/history-store';
 import { useSimulatorStore } from '../../stores/simulator-store';
 import type { DeviceProfile } from '../../types/device';
@@ -39,6 +41,7 @@ export function App() {
   const { ready, error: storageError } = useStorageReady();
   const { device } = useDeviceProfile();
   const simulator = useSimulatorStore();
+  const workspaceMode = useCompareStore((state) => state.workspaceMode);
   const addDevice = useDeviceStore((state) => state.addDevice);
   const updateDevice = useDeviceStore((state) => state.updateDevice);
   const removeDevice = useDeviceStore((state) => state.removeDevice);
@@ -66,6 +69,7 @@ export function App() {
     if (requestedUrl) {
       const normalized = tryNormalizeUrl(requestedUrl);
       if (normalized.success) {
+        useCompareStore.getState().setWorkspaceMode('single');
         simulator.navigate(normalized.url, true);
         recordUrl(normalized.url);
       } else {
@@ -139,6 +143,58 @@ export function App() {
     }
   };
 
+  const enterCompareMode = (addCurrent = false) => {
+    const compare = useCompareStore.getState();
+    if (compare.instances.length === 0) compare.setGlobalUrl(simulator.url);
+    if ((addCurrent || compare.instances.length === 0) && device) {
+      const offset = compare.instances.length * 40;
+      compare.addInstance(device.id, {
+        url: simulator.url,
+        orientation: simulator.orientation,
+        scale: simulator.scale === 'auto' ? simulator.resolvedScale : simulator.scale,
+        position: { x: 80 + offset, y: 80 + offset },
+        safeAreaVisible: simulator.showSafeArea,
+        cameraVisible: true,
+        displayFeaturesVisible: true,
+        frameVisible: true,
+      });
+    }
+    compare.setWorkspaceMode('compare');
+  };
+
+  const openCompareInstanceInSingleMode = (instanceId: string) => {
+    const compare = useCompareStore.getState();
+    const instance = compare.instances.find((item) => item.id === instanceId);
+    if (
+      !instance ||
+      !useDeviceStore.getState().devices.some((item) => item.id === instance.deviceId)
+    ) {
+      showToast('该实例引用的设备配置已不存在，请先更换设备。', 'error');
+      return;
+    }
+    setCurrentDevice(instance.deviceId);
+    simulator.setOrientation(instance.orientation);
+    simulator.setScale(instance.scale);
+    simulator.setShowSafeArea(instance.safeAreaVisible);
+    if (instance.url) simulator.navigate(instance.url, true);
+    else simulator.clearUrl();
+    compare.setWorkspaceMode('single');
+  };
+
+  if (workspaceMode === 'compare') {
+    return (
+      <>
+        <CompareWorkspace
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenAbout={() => setAboutOpen(true)}
+          onOpenSingleInstance={openCompareInstanceInSingleMode}
+        />
+        <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+        <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      </>
+    );
+  }
+
   return (
     <>
       <AppShell
@@ -149,7 +205,7 @@ export function App() {
         toolbar={
           <TopToolbar
             onScreenshot={() => void takeScreenshot()}
-            onCompare={() => showToast('对比模式将在后续版本开放。', 'info')}
+            onCompare={() => enterCompareMode(true)}
             onSettings={() => setSettingsOpen(true)}
             {...(embeddedContext
               ? {
@@ -168,7 +224,9 @@ export function App() {
         }
         navigation={
           <SidebarNavigation
-            onCompare={() => showToast('对比模式将在后续版本开放。', 'info')}
+            mode="single"
+            onSingle={() => undefined}
+            onCompare={() => enterCompareMode()}
             onTools={() => showToast('摄像头、标尺和网格工具已集成在画布中。', 'info')}
             onSettings={() => setSettingsOpen(true)}
             onAbout={() => setAboutOpen(true)}

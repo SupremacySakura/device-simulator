@@ -2,6 +2,8 @@ import { Blocks, CircleHelp, Columns2, Settings, Smartphone, Wrench } from 'luci
 import type { ReactNode } from 'react';
 
 interface SidebarNavigationProps {
+  mode?: 'single' | 'compare';
+  onSingle?: () => void;
   onCompare: () => void;
   onTools: () => void;
   onSettings: () => void;
@@ -36,6 +38,8 @@ function NavItem({ label, active = false, icon, onClick }: NavItemProps) {
 }
 
 export function SidebarNavigation({
+  mode = 'single',
+  onSingle,
   onCompare,
   onTools,
   onSettings,
@@ -47,8 +51,18 @@ export function SidebarNavigation({
       className="flex h-full w-[72px] shrink-0 flex-col items-center border-r border-[#e8e8ed] bg-white py-3"
     >
       <div className="flex flex-1 flex-col items-center gap-2">
-        <NavItem label="设备" active icon={<Smartphone className="size-[21px]" />} />
-        <NavItem label="对比" icon={<Columns2 className="size-[21px]" />} onClick={onCompare} />
+        <NavItem
+          label="设备"
+          active={mode === 'single'}
+          icon={<Smartphone className="size-[21px]" />}
+          {...(onSingle === undefined ? {} : { onClick: onSingle })}
+        />
+        <NavItem
+          label="对比"
+          active={mode === 'compare'}
+          icon={<Columns2 className="size-[21px]" />}
+          onClick={onCompare}
+        />
         <NavItem label="工具" icon={<Wrench className="size-[21px]" />} onClick={onTools} />
         <NavItem label="设置" icon={<Settings className="size-[21px]" />} onClick={onSettings} />
       </div>

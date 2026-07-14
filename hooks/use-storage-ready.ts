@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import { STORAGE_KEYS, STORAGE_VERSION } from '../constants/storage-keys';
+import { compareStorageService } from '../services/compare-storage-service';
 import { storageService } from '../services/storage-service';
+import {
+  serializeCompareStore,
+  useCompareStore,
+  type CompareStoreState,
+} from '../stores/compare-store';
 import {
   serializeDeviceStore,
   useDeviceStore,
@@ -156,6 +162,9 @@ function setupSubscriptions(): void {
   const persistSimulator = debounceWrite((data: PersistedSimulatorData) =>
     storageService.write(STORAGE_KEYS.simulator, STORAGE_VERSION, data),
   );
+  const persistCompare = debounceWrite((data: CompareStoreState) =>
+    compareStorageService.write(serializeCompareStore(data)),
+  );
 
   useDeviceStore.subscribe((state, previous) => {
     if (state.hydrated && state !== previous) persistDevices(serializeDeviceStore(state));
@@ -169,15 +178,21 @@ function setupSubscriptions(): void {
   useSimulatorStore.subscribe((state, previous) => {
     if (state.hydrated && state !== previous) persistSimulator(serializeSimulatorStore(state));
   });
+  useCompareStore.subscribe((state, previous) => {
+    if (state.hydrated && state.persistenceRevision !== previous.persistenceRevision) {
+      persistCompare(state);
+    }
+  });
 }
 
 export function initializeStores(): Promise<void> {
   initialization ??= (async () => {
-    const [deviceData, settings, history, simulator] = await Promise.all([
+    const [deviceData, settings, history, simulator, compare] = await Promise.all([
       storageService.read<unknown>(STORAGE_KEYS.devices, STORAGE_VERSION),
       storageService.read<unknown>(STORAGE_KEYS.settings, STORAGE_VERSION),
       storageService.read<unknown>(STORAGE_KEYS.history, STORAGE_VERSION),
       storageService.read<unknown>(STORAGE_KEYS.simulator, STORAGE_VERSION),
+      compareStorageService.read(),
     ]);
 
     const parsedDevices = parseDeviceData(deviceData);
@@ -188,6 +203,7 @@ export function initializeStores(): Promise<void> {
     useSettingsStore.getState().hydrate(parsedSettings);
     useHistoryStore.getState().hydrate(parseHistory(history));
     useSimulatorStore.getState().hydrate(parsedSimulator);
+    useCompareStore.getState().hydrate(compare);
 
     if (parsedDevices === null) {
       useDeviceStore.getState().setCurrentDevice(parsedSettings.defaultDeviceId);

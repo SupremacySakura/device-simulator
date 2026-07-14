@@ -236,7 +236,11 @@ export function TopToolbar({ onScreenshot, onCompare, onSettings, onClose }: Top
         <IconButton label="截图（实验性）" className="max-[900px]:hidden" onClick={onScreenshot}>
           <Camera className="size-[18px]" />
         </IconButton>
-        <IconButton label="对比模式" className="max-[1100px]:hidden" onClick={onCompare}>
+        <IconButton
+          label="添加当前设备到多设备对比"
+          className="max-[1100px]:hidden"
+          onClick={onCompare}
+        >
           <Maximize2 className="size-[18px]" />
         </IconButton>
         <IconButton label="设置" className="max-[1100px]:hidden" onClick={onSettings}>

@@ -1,10 +1,12 @@
 export const STORAGE_VERSION = 1;
+export const COMPARE_STORAGE_VERSION = 2;
 
 export const STORAGE_KEYS = {
   devices: 'device-simulator:devices',
   settings: 'device-simulator:settings',
   history: 'device-simulator:history',
   simulator: 'device-simulator:simulator',
+  compare: 'device-simulator:compare',
 } as const;
 
 export const STORAGE_VERSIONS = {
@@ -12,6 +14,7 @@ export const STORAGE_VERSIONS = {
   settings: STORAGE_VERSION,
   history: STORAGE_VERSION,
   simulator: STORAGE_VERSION,
+  compare: COMPARE_STORAGE_VERSION,
 } as const;
 
 export type StorageNamespace = keyof typeof STORAGE_KEYS;
