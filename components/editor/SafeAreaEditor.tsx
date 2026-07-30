@@ -40,7 +40,9 @@ export function SafeAreaEditor({
           <h3 id="safe-area-heading" className="text-sm font-semibold text-[#292a31]">
             安全区
           </h3>
-          <p className="mt-0.5 text-[11px] text-[#8b8d96]">当前方向，单位为 CSS px</p>
+          <p className="mt-0.5 text-[11px] leading-4 text-[#8b8d96]">
+            当前方向，单位为 CSS px；会从页面内容视口中留白，不等同于页面内 env()。
+          </p>
         </div>
         {!readOnly && onReset ? (
           <IconButton label="恢复安全区原值" size="sm" onClick={onReset}>

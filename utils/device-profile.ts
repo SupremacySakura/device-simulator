@@ -1,8 +1,10 @@
 import type {
   CameraPosition,
   DeviceCamera,
+  DeviceConfidence,
   DeviceFeatureStyle,
   DeviceFrameConfig,
+  DeviceFrameInsets,
   DeviceOrientation,
   DeviceProfile,
   DeviceViewportConfig,
@@ -75,7 +77,27 @@ export function getDeviceViewport(
   return orientation === 'portrait' ? profile.portrait : profile.landscape;
 }
 
+/** Rotates portrait-oriented physical housing insets counterclockwise with the device. */
+export function getDeviceFrameInsets(
+  profile: DeviceProfile,
+  orientation: DeviceOrientation,
+): DeviceFrameInsets {
+  const { insets } = profile.frame;
+  if (orientation === 'portrait' || profile.category === 'desktop') return insets;
+
+  return {
+    top: insets.right,
+    right: insets.bottom,
+    bottom: insets.left,
+    left: insets.top,
+  };
+}
+
 export const getViewportForOrientation = getDeviceViewport;
+
+export function getDeviceConfidence(profile: DeviceProfile): DeviceConfidence {
+  return profile.confidence ?? 'unverified';
+}
 
 /** Creates a deeply independent, editable custom-device copy. */
 export function copyDeviceAsCustom(
@@ -104,6 +126,7 @@ export function copyDeviceAsCustom(
     id: nextId,
     name: nextName,
     isSystem: false,
+    confidence: 'unverified',
     favorite: options.favorite ?? false,
     createdAt: now,
     updatedAt: now,

@@ -370,6 +370,9 @@ function SingleInstanceSettings({
               })
             }
           />
+          <p className="mb-1 text-[10px] leading-4 text-[#858790]">
+            当前方向，单位为 CSS px；开关只控制辅助线，安全区始终为页面内容留白。
+          </p>
           <ToggleRow
             label="摄像头 / 挖孔"
             active={instance.cameraVisible}
@@ -488,6 +491,9 @@ function MultiSelectionSettings({ props }: { props: ComparePropertyPanelProps })
             隐藏边框
           </Button>
         </div>
+        <p className="mt-2 text-[10px] leading-4 text-[#858790]">
+          显示或隐藏安全区辅助线不会改变页面内容的安全区占位。
+        </p>
       </Section>
       <Section title="批量 URL">
         <div className="flex gap-2">

@@ -2,6 +2,7 @@ import type {
   CameraPosition,
   DeviceCamera,
   DeviceCategory,
+  DeviceConfidence,
   DeviceFeatureStyle,
   DeviceFrameConfig,
   DeviceProfile,
@@ -10,8 +11,10 @@ import type {
   SafeAreaInsets,
 } from '../types/device';
 import type { DeviceExportFile } from '../types/storage';
+import { getCameraBounds } from './camera-position';
 
-export type ValidationIssueCode = 'required' | 'type' | 'range' | 'enum' | 'duplicate' | 'schema';
+export type ValidationIssueCode =
+  'required' | 'type' | 'range' | 'enum' | 'duplicate' | 'schema' | 'out_of_bounds';
 
 export interface ValidationIssue {
   path: string;
@@ -41,12 +44,22 @@ interface NumberRules {
 
 type UnknownRecord = Record<string, unknown>;
 
+const MAX_VIEWPORT_SIZE = 4000;
+const MIN_DEVICE_PIXEL_RATIO = 0.5;
+const MAX_DEVICE_PIXEL_RATIO = 5;
+
 const DEVICE_CATEGORIES: ReadonlySet<string> = new Set<DeviceCategory>([
   'phone',
   'tablet',
   'desktop',
   'foldable',
   'custom',
+]);
+const DEVICE_CONFIDENCES: ReadonlySet<string> = new Set<DeviceConfidence>([
+  'high',
+  'medium',
+  'low',
+  'unverified',
 ]);
 const CAMERA_SHAPES: ReadonlySet<string> = new Set(['circle', 'ellipse', 'rounded-rect', 'rect']);
 const CAMERA_LAYOUT_MODES: ReadonlySet<string> = new Set(['overlay', 'occupy']);
@@ -58,6 +71,46 @@ const DISPLAY_FEATURE_TYPES: ReadonlySet<string> = new Set([
   'hinge',
   'custom',
 ]);
+
+interface AxisAlignedBounds {
+  x: number;
+  y: number;
+  right: number;
+  bottom: number;
+}
+
+function rotatedBounds(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  rotation = 0,
+): AxisAlignedBounds {
+  const radians = (rotation * Math.PI) / 180;
+  const rotatedWidth = Math.abs(width * Math.cos(radians)) + Math.abs(height * Math.sin(radians));
+  const rotatedHeight = Math.abs(width * Math.sin(radians)) + Math.abs(height * Math.cos(radians));
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  return {
+    x: centerX - rotatedWidth / 2,
+    y: centerY - rotatedHeight / 2,
+    right: centerX + rotatedWidth / 2,
+    bottom: centerY + rotatedHeight / 2,
+  };
+}
+
+function isWithinViewport(
+  bounds: AxisAlignedBounds,
+  viewport: Pick<DeviceViewportConfig, 'width' | 'height'>,
+): boolean {
+  const epsilon = 1e-9;
+  return (
+    bounds.x >= -epsilon &&
+    bounds.y >= -epsilon &&
+    bounds.right <= viewport.width + epsilon &&
+    bounds.bottom <= viewport.height + epsilon
+  );
+}
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -335,24 +388,81 @@ function validateViewport(value: unknown, path: string, issues: ValidationIssue[
   }
 
   const start = issues.length;
-  validateNumber(value.width, `${path}.width`, issues, {
+  const widthIsValid = validateNumber(value.width, `${path}.width`, issues, {
     min: 0,
     exclusiveMin: true,
+    max: MAX_VIEWPORT_SIZE,
   });
-  validateNumber(value.height, `${path}.height`, issues, {
+  const heightIsValid = validateNumber(value.height, `${path}.height`, issues, {
     min: 0,
     exclusiveMin: true,
+    max: MAX_VIEWPORT_SIZE,
   });
-  validateNumber(value.screenBorderRadius, `${path}.screenBorderRadius`, issues, {
-    min: 0,
-  });
-  validateInsets(value.safeArea, `${path}.safeArea`, issues);
+  const radiusIsValid = validateNumber(
+    value.screenBorderRadius,
+    `${path}.screenBorderRadius`,
+    issues,
+    { min: 0 },
+  );
+  const safeAreaIsValid = validateInsets(value.safeArea, `${path}.safeArea`, issues);
+  const viewportWidth = widthIsValid ? (value.width as number) : null;
+  const viewportHeight = heightIsValid ? (value.height as number) : null;
+  const screenBorderRadius = radiusIsValid ? (value.screenBorderRadius as number) : null;
+  const safeArea = safeAreaIsValid ? toInsets(value.safeArea as UnknownRecord) : null;
+
+  if (viewportWidth !== null && viewportHeight !== null && screenBorderRadius !== null) {
+    const maximumRadius = Math.min(viewportWidth, viewportHeight) / 2;
+    if (screenBorderRadius > maximumRadius) {
+      addIssue(
+        issues,
+        `${path}.screenBorderRadius`,
+        `不能大于视口短边的一半（${maximumRadius}）。`,
+        'range',
+      );
+    }
+  }
+
+  if (viewportWidth !== null && viewportHeight !== null && safeArea !== null) {
+    if (
+      safeArea.top + safeArea.bottom >= viewportHeight ||
+      safeArea.left + safeArea.right >= viewportWidth
+    ) {
+      addIssue(issues, `${path}.safeArea`, '安全区合计必须小于对应视口尺寸。', 'range');
+    }
+  }
+
+  const viewportForBounds: DeviceViewportConfig | null =
+    viewportWidth !== null && viewportHeight !== null
+      ? {
+          width: viewportWidth,
+          height: viewportHeight,
+          screenBorderRadius: 0,
+          safeArea: { top: 0, right: 0, bottom: 0, left: 0 },
+          cameras: [],
+          displayFeatures: [],
+        }
+      : null;
 
   if (!Array.isArray(value.cameras)) {
     addIssue(issues, `${path}.cameras`, '必须是数组。', 'type');
   } else {
     value.cameras.forEach((camera, index) => {
-      validateCamera(camera, `${path}.cameras[${index}]`, issues);
+      const cameraPath = `${path}.cameras[${index}]`;
+      const cameraIsValid = validateCamera(camera, cameraPath, issues);
+      if (cameraIsValid && viewportForBounds !== null && isRecord(camera)) {
+        const normalizedCamera = toCamera(camera);
+        const bounds = getCameraBounds(normalizedCamera, viewportForBounds);
+        const rotated = rotatedBounds(
+          bounds.x,
+          bounds.y,
+          bounds.width,
+          bounds.height,
+          normalizedCamera.rotation,
+        );
+        if (!isWithinViewport(rotated, viewportForBounds)) {
+          addIssue(issues, cameraPath, '摄像头边界不能超出视口。', 'out_of_bounds');
+        }
+      }
     });
     validateUniqueIds(value.cameras, `${path}.cameras`, issues);
   }
@@ -361,7 +471,21 @@ function validateViewport(value: unknown, path: string, issues: ValidationIssue[
     addIssue(issues, `${path}.displayFeatures`, '必须是数组。', 'type');
   } else {
     value.displayFeatures.forEach((feature, index) => {
-      validateDisplayFeature(feature, `${path}.displayFeatures[${index}]`, issues);
+      const featurePath = `${path}.displayFeatures[${index}]`;
+      const featureIsValid = validateDisplayFeature(feature, featurePath, issues);
+      if (featureIsValid && viewportForBounds !== null && isRecord(feature)) {
+        const normalizedFeature = toDisplayFeature(feature);
+        const bounds = rotatedBounds(
+          normalizedFeature.x,
+          normalizedFeature.y,
+          normalizedFeature.width,
+          normalizedFeature.height,
+          normalizedFeature.rotation,
+        );
+        if (!isWithinViewport(bounds, viewportForBounds)) {
+          addIssue(issues, featurePath, '显示特征边界不能超出视口。', 'out_of_bounds');
+        }
+      }
     });
     validateUniqueIds(value.displayFeatures, `${path}.displayFeatures`, issues);
   }
@@ -412,9 +536,12 @@ function validateDeviceProfileShape(
   });
   validateEnum(value.category, `${path}.category`, issues, DEVICE_CATEGORIES);
   validateNumber(value.devicePixelRatio, `${path}.devicePixelRatio`, issues, {
-    min: 0,
-    exclusiveMin: true,
+    min: MIN_DEVICE_PIXEL_RATIO,
+    max: MAX_DEVICE_PIXEL_RATIO,
   });
+  if (value.confidence !== undefined) {
+    validateEnum(value.confidence, `${path}.confidence`, issues, DEVICE_CONFIDENCES);
+  }
   validateOptionalString(value.userAgent, `${path}.userAgent`, issues, {
     maxLength: 1024,
   });
@@ -547,6 +674,9 @@ function toDeviceProfile(value: UnknownRecord): DeviceProfile {
     ...(typeof value.model === 'string' ? { model: value.model } : {}),
     category: value.category as DeviceCategory,
     devicePixelRatio: value.devicePixelRatio as number,
+    ...(typeof value.confidence === 'string'
+      ? { confidence: value.confidence as DeviceConfidence }
+      : {}),
     ...(typeof value.userAgent === 'string' ? { userAgent: value.userAgent } : {}),
     portrait: toViewport(value.portrait as UnknownRecord),
     landscape: toViewport(value.landscape as UnknownRecord),

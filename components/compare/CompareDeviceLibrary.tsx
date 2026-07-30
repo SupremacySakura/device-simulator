@@ -1,9 +1,10 @@
-import { CopyPlus, MonitorSmartphone, Plus, Smartphone, Star } from 'lucide-react';
+import { CopyPlus, MonitorSmartphone, Plus, Smartphone, Star, Tablets } from 'lucide-react';
 import { useMemo, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react';
 import type { DeviceCategoryFilter } from '../../stores/device-store';
 import type { DeviceOrientation, DeviceProfile } from '../../types/device';
 import { IconButton } from '../common/IconButton';
 import { DeviceCategoryTabs } from '../device/DeviceCategoryTabs';
+import { DeviceConfidenceBadge } from '../device/DeviceConfidenceBadge';
 import { DeviceSearch } from '../device/DeviceSearch';
 
 export const COMPARE_DEVICE_DRAG_TYPE = 'application/x-device-simulator-profile';
@@ -77,6 +78,8 @@ function DeviceItem({
       <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[#f0edff] text-[#6045df]">
         {device.category === 'desktop' ? (
           <MonitorSmartphone className="size-[18px]" />
+        ) : device.category === 'foldable' ? (
+          <Tablets className="size-[18px]" />
         ) : (
           <Smartphone className="size-[18px]" />
         )}
@@ -90,9 +93,12 @@ function DeviceItem({
             </span>
           ) : null}
         </div>
-        <p className="mt-0.5 text-[10px] text-[#858790]">
-          {device.portrait.width} × {device.portrait.height}
-        </p>
+        <div className="mt-1 flex items-center gap-1.5">
+          <DeviceConfidenceBadge confidence={device.confidence} compact />
+          <span className="text-[10px] text-[#858790]">
+            {device.portrait.width} × {device.portrait.height}
+          </span>
+        </div>
       </div>
       <div className="flex shrink-0 items-center opacity-70 transition group-hover:opacity-100">
         <IconButton

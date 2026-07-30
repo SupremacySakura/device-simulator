@@ -1,12 +1,5 @@
 import type { DeviceCategoryFilter } from '../../stores/device-store';
-
-const CATEGORIES: ReadonlyArray<{ id: DeviceCategoryFilter; label: string }> = [
-  { id: 'all', label: '全部' },
-  { id: 'phone', label: '手机' },
-  { id: 'tablet', label: '平板' },
-  { id: 'desktop', label: '桌面' },
-  { id: 'custom', label: '自定义' },
-];
+import { DEVICE_CATEGORY_TABS } from './device-category-tabs';
 
 interface DeviceCategoryTabsProps {
   value: DeviceCategoryFilter;
@@ -16,7 +9,7 @@ interface DeviceCategoryTabsProps {
 export function DeviceCategoryTabs({ value, onChange }: DeviceCategoryTabsProps) {
   return (
     <div className="flex gap-1 overflow-x-auto pb-1" role="tablist" aria-label="设备分类">
-      {CATEGORIES.map((category) => (
+      {DEVICE_CATEGORY_TABS.map((category) => (
         <button
           key={category.id}
           type="button"

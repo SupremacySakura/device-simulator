@@ -104,6 +104,30 @@ describe('device import envelope', () => {
     expect(result.data).toMatchObject({ importedCount: 0, failedCount: 1 });
     expect(result.data.failures[0]?.issues[0]?.path).toContain('$.devices[0]');
   });
+
+  it('imports a legacy profile without confidence as an unverified custom device', () => {
+    const legacy = getDevice('iphone-15-pro');
+    delete legacy.confidence;
+    const result = importDevicesFromJson(
+      JSON.stringify({
+        schemaVersion: DEVICE_EXPORT_SCHEMA_VERSION,
+        exportedAt: 10,
+        devices: [legacy],
+      }),
+      [],
+      { conflictStrategy: 'skip', now: 20, idFactory: () => 'legacy-custom' },
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      throw new Error('Expected the legacy profile to remain importable.');
+    }
+    expect(getOnlyDevice(result.data.importedDevices)).toMatchObject({
+      id: 'legacy-custom',
+      isSystem: false,
+      confidence: 'unverified',
+    });
+  });
 });
 
 describe('mergeImportedDevices conflict strategies', () => {

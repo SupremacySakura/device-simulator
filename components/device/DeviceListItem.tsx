@@ -7,11 +7,13 @@ import {
   Smartphone,
   Star,
   Tablet,
+  Tablets,
   Trash2,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { DeviceProfile } from '../../types/device';
 import { IconButton } from '../common/IconButton';
+import { DeviceConfidenceBadge } from './DeviceConfidenceBadge';
 
 interface DeviceListItemProps {
   device: DeviceProfile;
@@ -27,6 +29,7 @@ interface DeviceListItemProps {
 function DeviceIcon({ device }: { device: DeviceProfile }) {
   if (device.category === 'desktop') return <Monitor className="size-[19px]" />;
   if (device.category === 'tablet') return <Tablet className="size-[19px]" />;
+  if (device.category === 'foldable') return <Tablets className="size-[19px]" />;
   return <Smartphone className="size-[19px]" />;
 }
 
@@ -77,7 +80,10 @@ export function DeviceListItem({
           <DeviceIcon device={device} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{device.name}</span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-sm font-medium">{device.name}</span>
+            <DeviceConfidenceBadge confidence={device.confidence} compact />
+          </span>
           <span className={`mt-0.5 block text-xs ${active ? 'text-[#6e58db]' : 'text-[#81838c]'}`}>
             {device.portrait.width} × {device.portrait.height}
           </span>

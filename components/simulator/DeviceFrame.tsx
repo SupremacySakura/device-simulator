@@ -1,11 +1,12 @@
 import type { Ref } from 'react';
-import type { DeviceProfile, DeviceViewportConfig } from '../../types/device';
+import type { DeviceFrameInsets, DeviceProfile, DeviceViewportConfig } from '../../types/device';
 import type { IframeStatus } from '../../types/simulator';
 import { DeviceScreen } from './DeviceScreen';
 
 interface DeviceFrameProps {
   device: DeviceProfile;
   viewport: DeviceViewportConfig;
+  frameInsets: DeviceFrameInsets;
   url: string;
   reloadKey: number;
   observedUrl?: string | null;
@@ -37,6 +38,7 @@ interface DeviceFrameProps {
 export function DeviceFrame({
   device,
   viewport,
+  frameInsets,
   showShadow,
   frameVisible = true,
   ...props
@@ -45,10 +47,10 @@ export function DeviceFrame({
   const frameEnabled = frameVisible && frame.enabled;
   const frameStyle = frameEnabled
     ? {
-        paddingTop: frame.insets.top,
-        paddingRight: frame.insets.right,
-        paddingBottom: frame.insets.bottom,
-        paddingLeft: frame.insets.left,
+        paddingTop: frameInsets.top,
+        paddingRight: frameInsets.right,
+        paddingBottom: frameInsets.bottom,
+        paddingLeft: frameInsets.left,
         borderRadius: frame.borderRadius,
         backgroundColor: frame.backgroundColor,
         borderColor: frame.borderColor,

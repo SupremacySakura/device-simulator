@@ -1,6 +1,6 @@
 import type { CompareDeviceInstance } from '../types/compare';
 import type { DeviceOrientation, DeviceProfile } from '../types/device';
-import { getDeviceViewport } from './device-profile';
+import { getDeviceFrameInsets, getDeviceViewport } from './device-profile';
 
 export interface VisualSize {
   width: number;
@@ -39,7 +39,8 @@ export function getDeviceOuterSize(
   const frameEnabled = frameVisible && profile.frame.enabled;
   if (!frameEnabled) return { width: viewport.width, height: viewport.height };
 
-  const { insets, borderWidth } = profile.frame;
+  const insets = getDeviceFrameInsets(profile, orientation);
+  const { borderWidth } = profile.frame;
   return {
     width: viewport.width + insets.left + insets.right + borderWidth * 2,
     height: viewport.height + insets.top + insets.bottom + borderWidth * 2,

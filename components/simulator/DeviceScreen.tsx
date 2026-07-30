@@ -1,6 +1,7 @@
 import type { DeviceViewportConfig } from '../../types/device';
 import type { IframeStatus } from '../../types/simulator';
 import type { Ref } from 'react';
+import { getDeviceContentRect } from '../../utils/safe-area-layout';
 import { CameraLayer } from './CameraLayer';
 import { DisplayFeatureLayer } from './DisplayFeatureLayer';
 import { SafeAreaOverlay } from './SafeAreaOverlay';
@@ -61,6 +62,8 @@ export function DeviceScreen({
   onDraggingChange,
   onClearSelection,
 }: DeviceScreenProps) {
+  const contentRect = getDeviceContentRect(viewport);
+
   return (
     <div
       className="relative isolate overflow-hidden bg-white"
@@ -71,19 +74,30 @@ export function DeviceScreen({
       }}
       onClick={onClearSelection}
     >
-      <SimulatorIframe
-        url={url}
-        reloadKey={reloadKey}
-        observedUrl={observedUrl}
-        status={iframeStatus}
-        message={iframeMessage}
-        interactionBlocked={dragging}
-        onStatusChange={onStatusChange}
-        onReload={onReload}
-        {...(iframeTitle === undefined ? {} : { title: iframeTitle })}
-        {...(iframeName === undefined ? {} : { name: iframeName })}
-        {...(iframeRef === undefined ? {} : { iframeRef })}
-      />
+      <div
+        className="absolute overflow-hidden bg-white"
+        data-device-content-viewport="true"
+        style={{
+          left: contentRect.x,
+          top: contentRect.y,
+          width: contentRect.width,
+          height: contentRect.height,
+        }}
+      >
+        <SimulatorIframe
+          url={url}
+          reloadKey={reloadKey}
+          observedUrl={observedUrl}
+          status={iframeStatus}
+          message={iframeMessage}
+          interactionBlocked={dragging}
+          onStatusChange={onStatusChange}
+          onReload={onReload}
+          {...(iframeTitle === undefined ? {} : { title: iframeTitle })}
+          {...(iframeName === undefined ? {} : { name: iframeName })}
+          {...(iframeRef === undefined ? {} : { iframeRef })}
+        />
+      </div>
       <SafeAreaOverlay
         insets={viewport.safeArea}
         width={viewport.width}

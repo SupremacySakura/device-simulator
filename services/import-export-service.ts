@@ -232,7 +232,11 @@ export function mergeImportedDevices(
         favorite: imported.favorite,
       });
     } else {
-      imported = { ...cloneDeviceProfile(imported), isSystem: false };
+      imported = {
+        ...cloneDeviceProfile(imported),
+        isSystem: false,
+        confidence: 'unverified',
+      };
     }
 
     const idIndex = devices.findIndex((device) => device.id === imported.id);

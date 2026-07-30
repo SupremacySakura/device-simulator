@@ -1,7 +1,7 @@
 import type { ReactNode, Ref } from 'react';
 import type { DeviceOrientation, DeviceProfile } from '../../types/device';
 import type { IframeStatus } from '../../types/simulator';
-import { getDeviceViewport } from '../../utils/device-profile';
+import { getDeviceFrameInsets, getDeviceViewport } from '../../utils/device-profile';
 import { DeviceFrame } from './DeviceFrame';
 import { DeviceScaleWrapper } from './DeviceScaleWrapper';
 
@@ -73,7 +73,7 @@ export function DevicePreview({
   const viewport = getDeviceViewport(profile, orientation);
   const frameEnabled = frameVisible && profile.frame.enabled;
   const frameInsets = frameEnabled
-    ? profile.frame.insets
+    ? getDeviceFrameInsets(profile, orientation)
     : { top: 0, right: 0, bottom: 0, left: 0 };
   const borderWidth = frameEnabled ? profile.frame.borderWidth : 0;
   const outerWidth = viewport.width + frameInsets.left + frameInsets.right + borderWidth * 2;
@@ -84,6 +84,7 @@ export function DevicePreview({
       <DeviceFrame
         device={profile}
         viewport={viewport}
+        frameInsets={frameInsets}
         url={url}
         reloadKey={reloadKey}
         observedUrl={observedUrl}

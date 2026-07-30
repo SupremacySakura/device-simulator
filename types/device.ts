@@ -2,6 +2,8 @@ export type DeviceCategory = 'phone' | 'tablet' | 'desktop' | 'foldable' | 'cust
 
 export type DeviceOrientation = 'portrait' | 'landscape';
 
+export type DeviceConfidence = 'high' | 'medium' | 'low' | 'unverified';
+
 export interface SafeAreaInsets {
   top: number;
   right: number;
@@ -98,6 +100,7 @@ export interface DeviceProfile {
   model?: string;
   category: DeviceCategory;
   devicePixelRatio: number;
+  confidence?: DeviceConfidence;
   userAgent?: string;
   portrait: DeviceViewportConfig;
   landscape: DeviceViewportConfig;

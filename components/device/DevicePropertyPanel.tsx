@@ -13,12 +13,13 @@ import type {
   DeviceViewportConfig,
   SafeAreaInsets,
 } from '../../types/device';
-import { getDeviceViewport } from '../../utils/device-profile';
+import { getDeviceFrameInsets, getDeviceViewport } from '../../utils/device-profile';
 import { Button } from '../common/Button';
 import { IconButton } from '../common/IconButton';
 import { CameraListEditor } from '../editor/CameraListEditor';
 import { DisplayFeatureEditor } from '../editor/DisplayFeatureEditor';
 import { SafeAreaEditor } from '../editor/SafeAreaEditor';
+import { DeviceConfidenceBadge } from './DeviceConfidenceBadge';
 
 interface DevicePropertyPanelProps {
   onEdit: (device: DeviceProfile) => void;
@@ -151,7 +152,7 @@ export function DevicePropertyPanel({ onEdit, onDuplicate, onCollapse }: DeviceP
     }
   };
 
-  const frameInsets = device.frame.insets;
+  const frameInsets = getDeviceFrameInsets(device, orientation);
   const readOnly = device.isSystem;
 
   return (
@@ -206,10 +207,13 @@ export function DevicePropertyPanel({ onEdit, onDuplicate, onCollapse }: DeviceP
               {[device.brand, device.model].filter(Boolean).join(' / ') || '—'}
             </InfoRow>
             <InfoRow label="分类">{CATEGORY_LABELS[device.category]}</InfoRow>
-            <InfoRow label="CSS 尺寸">
+            <InfoRow label="数据可信度">
+              <DeviceConfidenceBadge confidence={device.confidence} />
+            </InfoRow>
+            <InfoRow label="CSS 视口">
               {viewport.width} × {viewport.height} px
             </InfoRow>
-            <InfoRow label="设备像素比">{device.devicePixelRatio}</InfoRow>
+            <InfoRow label="像素比（元数据）">{device.devicePixelRatio}</InfoRow>
             <InfoRow label="当前方向">
               <span className="inline-flex items-center justify-end gap-1.5">
                 <RotateCw className="size-3.5 text-[#777984]" aria-hidden="true" />
@@ -218,6 +222,9 @@ export function DevicePropertyPanel({ onEdit, onDuplicate, onCollapse }: DeviceP
             </InfoRow>
             <InfoRow label="屏幕圆角">{viewport.screenBorderRadius}px</InfoRow>
           </dl>
+          <p className="mt-2 text-[11px] leading-4 text-[#858790]">
+            DPR 和 UA 仅为配置元数据，不会改变 iframe 的真实环境或网络请求。
+          </p>
 
           <div className="mt-3 rounded-xl border border-[#e7e7ec] px-3 py-2">
             <h3 className="mb-1 text-xs font-semibold text-[#3b3c43]">设备边框</h3>

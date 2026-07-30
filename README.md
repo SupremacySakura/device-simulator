@@ -10,7 +10,8 @@ Device Simulator 是一个面向前端开发者的浏览器扩展工作台，用
 
 - Popup 读取当前标签页，并把完整模拟器覆盖层直接注入当前网页；地址栏继续保留原始网页 URL。
 - “空白模拟器”仍可按需打开独立扩展工作台。
-- 10 个系统预设，包含手机、平板和桌面设备；横屏与竖屏分别建模。
+- 17 个系统预设（其中 13 个 P0 真实设备），覆盖手机、平板、折叠屏和桌面参考视口；横屏与竖屏分别建模。
+- 设备列表、对比设备库和属性面板展示数据可信度，并支持单独筛选折叠屏设备。
 - iframe 始终使用设备的真实 CSS 视口尺寸，画布缩放仅作用于外层 `transform: scale()`。
 - 支持 10%–300% 连续手动缩放、顶部快捷步进和自动适应缩放。
 - 选择工具与小手模式可切换；小手模式支持自由拖动画布、指针锚定滚轮缩放、方向键平移、加减键缩放和一键居中。
@@ -137,6 +138,7 @@ interface DeviceProfile {
   model?: string;
   category: 'phone' | 'tablet' | 'desktop' | 'foldable' | 'custom';
   devicePixelRatio: number;
+  confidence?: 'high' | 'medium' | 'low' | 'unverified';
   userAgent?: string;
   portrait: DeviceViewportConfig;
   landscape: DeviceViewportConfig;
@@ -152,6 +154,10 @@ interface DeviceProfile {
 `portrait` 和 `landscape` 不会在运行时通过简单交换宽高生成。每个方向独立保存尺寸、屏幕圆角、安全区、摄像头数组和显示特征数组，因此横屏可以拥有完全不同的挖孔与安全区。
 
 系统设备不可直接编辑或删除。选择“复制并编辑”会生成新的 UUID、深复制嵌套数组并将 `isSystem` 设为 `false`。
+
+系统设备事实的公开来源、采集日期、估算字段和交叉验证状态记录在 [`constants/device-sources.json`](constants/device-sources.json)。两个桌面条目是产品内部参考视口，不代表硬件设备，因此不填写外部来源，也不声称已交叉验证。`high` 表示核心设备事实有可靠公开来源并已交叉核对，或者产品参考定义本身是确定的；`medium` 表示核心视口可用但部分字段采用明确回退，`low` 表示证据有限，`unverified` 用于旧数据和自定义设备。复制系统设备不会继承其可信度。
+
+设备尺寸是外层 CSS 屏幕尺寸，iframe 页面内容视口会扣除当前方向的 Safe Area，安全区内不显示页面内容。摄像头与挖孔仍相对外层屏幕定位，包含在安全区中，不会额外占位。DPR 和 UA 是配置元数据，不会改变 iframe 的真实环境或网络请求；Safe Area 也不会注入标准 CSS `env()`。物理设备的 `frame.insets` 以竖屏机身为基准，横屏时随设备旋转。Apple 工程图可直接换算的外框采用精确尺寸；Pixel、Galaxy 和 Surface 使用厂商机身尺寸、显示对角线与分辨率推导，并标为中可信。CSS 圆角、颜色和按钮等外观仍是展示近似值。
 
 ## 摄像头数组与位置计算
 
@@ -303,14 +309,14 @@ Device Simulator 不能保证加载所有网页，也不会默认移除网站的
 
 工作台使用加载超时与通用诊断提示，但不会伪造精确失败原因。建议优先调试允许嵌入的本地开发页面。后续可在用户明确授权后评估 `declarativeNetRequest` 方案；当前版本没有该权限，也不会修改响应头。
 
-普通 iframe 可以准确模拟 CSS viewport 和媒体查询宽高，但不能真正改写浏览器原生的：
+iframe 页面使用扣除 Safe Area 后的内容视口和媒体查询宽高，但不能真正改写浏览器原生的：
 
 - `window.devicePixelRatio`
 - HTTP User-Agent
 - 完整触控、GPU、字体渲染和操作系统行为
 - `env(safe-area-inset-*)`
 
-DPR 与 User-Agent 目前是设备配置元数据。安全区覆盖层不会给目标页面添加 padding，也不会声称覆盖原生 `env()`。localhost 通信桥可以提供 `--device-safe-area-*` 自定义 CSS 变量，目标项目需主动使用这些变量。
+DPR 与 User-Agent 目前是设备配置元数据。安全区通过缩小并偏移 iframe 内容视口留白，不会改写跨域页面 DOM，也不会声称覆盖原生 `env()`。localhost 通信桥可以提供 `--device-safe-area-*` 自定义 CSS 变量，目标项目可主动使用这些变量。
 
 ## 截图限制
 
@@ -340,6 +346,7 @@ DPR 与 User-Agent 目前是设备配置元数据。安全区覆盖层不会给�
 Vitest 覆盖以下纯函数行为：
 
 - 摄像头 absolute 与 anchor 坐标，以及 right/bottom 拖拽偏移。
+- 安全区内容视口留白，以及摄像头不重复占位。
 - 自动缩放、padding 和上下限。
 - 小手模式拖拽位移、连续滚轮缩放和指针锚点稳定性。
 - localhost/loopback 与普通域名 URL 规范化、危险 scheme 拒绝。
@@ -360,7 +367,7 @@ Vitest 覆盖以下纯函数行为：
 - 从 iframe 内部发起的文件下载、弹窗、权限请求和登录流程仍取决于浏览器及目标站点策略。
 - 当前未实现对比实例的剪贴板 JSON 复制粘贴和远距离节点虚拟化；`Ctrl/⌘ + D` 复制实例已可用。
 - 跨域 iframe 是独立浏览上下文；未按住 `Space` 时，父画布无法拦截 iframe 内部的滚轮事件。需要跨设备导航画布时应先进入临时小手层。
-- `layoutMode: occupy` 只作为调试元数据和提示，不会改变 iframe 页面布局。
+- 摄像头的 `layoutMode: occupy` 不会在 Safe Area 之外再次改变 iframe 布局。
 - DPR、User-Agent 和原生 safe-area env 尚未被真实覆盖。
 - 截图只覆盖当前可视设备区域。
 - 当前没有云同步、设备配置分享或团队协作。

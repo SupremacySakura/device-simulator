@@ -71,7 +71,9 @@ export function DeviceFrameForm({ value, errors, onChange }: DeviceFrameFormProp
       </div>
 
       <fieldset className="rounded-xl border border-[#e7e7ec] p-4">
-        <legend className="px-1 text-sm font-semibold text-[#34353c]">屏幕到外壳边距</legend>
+        <legend className="px-1 text-sm font-semibold text-[#34353c]">
+          屏幕到外壳边距（竖屏基准）
+        </legend>
         <div className="mt-2 grid grid-cols-4 gap-3">
           {(
             [

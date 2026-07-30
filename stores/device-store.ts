@@ -43,6 +43,7 @@ function mergeDevices(data: PersistedDeviceData | null): DeviceProfile[] {
     .map((device) => ({
       ...cloneDeviceProfile(device),
       isSystem: false,
+      confidence: 'unverified' as const,
       favorite: usePresetFavorites ? device.favorite : favoriteIds.has(device.id),
     }));
   return [...systems, ...customs];
@@ -82,7 +83,12 @@ export const useDeviceStore = create<DeviceStoreState>((set, get) => ({
     })),
 
   addDevice: (device) => {
-    const custom = { ...cloneDeviceProfile(device), isSystem: false, updatedAt: Date.now() };
+    const custom = {
+      ...cloneDeviceProfile(device),
+      isSystem: false,
+      confidence: 'unverified' as const,
+      updatedAt: Date.now(),
+    };
     set((state) => ({
       devices: [...state.devices.filter((item) => item.id !== custom.id), custom],
       currentDeviceId: custom.id,
@@ -92,7 +98,12 @@ export const useDeviceStore = create<DeviceStoreState>((set, get) => ({
   updateDevice: (device) => {
     const existing = get().devices.find((item) => item.id === device.id);
     if (!existing || existing.isSystem) return false;
-    const updated = { ...cloneDeviceProfile(device), isSystem: false, updatedAt: Date.now() };
+    const updated = {
+      ...cloneDeviceProfile(device),
+      isSystem: false,
+      confidence: 'unverified' as const,
+      updatedAt: Date.now(),
+    };
     set((state) => ({
       devices: state.devices.map((item) => (item.id === updated.id ? updated : item)),
     }));
@@ -127,6 +138,7 @@ export const useDeviceStore = create<DeviceStoreState>((set, get) => ({
       const normalized = customDevices.map((device) => ({
         ...cloneDeviceProfile(device),
         isSystem: false,
+        confidence: 'unverified' as const,
       }));
       const devices = [...systems, ...normalized];
       return {

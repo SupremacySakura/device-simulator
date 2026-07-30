@@ -19,9 +19,9 @@ const PROFILE = createCompareProfile('framed', 100, 200, {
 });
 
 describe('compare instance visual size', () => {
-  it('includes visible frame insets and border width', () => {
+  it('includes visible frame insets and rotates them with the device', () => {
     expect(getDeviceOuterSize(PROFILE, 'portrait', true)).toEqual({ width: 110, height: 208 });
-    expect(getDeviceOuterSize(PROFILE, 'landscape', true)).toEqual({ width: 210, height: 108 });
+    expect(getDeviceOuterSize(PROFILE, 'landscape', true)).toEqual({ width: 208, height: 110 });
   });
 
   it('excludes a hidden frame and applies only instance scale', () => {

@@ -12,7 +12,11 @@ import {
   calculateZoomedPan,
   type CanvasPoint,
 } from '../../utils/canvas-transform';
-import { cloneDeviceProfile, getDeviceViewport } from '../../utils/device-profile';
+import {
+  cloneDeviceProfile,
+  getDeviceFrameInsets,
+  getDeviceViewport,
+} from '../../utils/device-profile';
 import { moveCameraPosition } from '../../utils/camera-position';
 import { stepManualScale } from '../../utils/device-scale';
 import { IconButton } from '../common/IconButton';
@@ -54,7 +58,7 @@ export function DeviceCanvas() {
   );
 
   const frameInsets = device?.frame.enabled
-    ? device.frame.insets
+    ? getDeviceFrameInsets(device, orientation)
     : { top: 0, right: 0, bottom: 0, left: 0 };
   const borderWidth = device?.frame.enabled ? device.frame.borderWidth : 0;
   const outerWidth = viewport
