@@ -21,6 +21,43 @@ interface PreviewSession {
 
 const sessions = new Map<number, PreviewSession>();
 
+const SESSION_KEY = 'device-simulator:preview-sessions';
+
+/**
+ * MV3 的 service worker 会休眠，内存中的 Map 随之丢失。
+ * 会话同时写入 storage.session，休眠后可按需恢复，避免工具条静默失效。
+ */
+async function persistSessions(): Promise<void> {
+  try {
+    await browser.storage.session.set({ [SESSION_KEY]: [...sessions.values()] });
+  } catch {
+    /* session 存储不可用时退化为纯内存 */
+  }
+}
+
+async function loadSessions(): Promise<void> {
+  if (sessions.size > 0) return;
+  try {
+    const stored = await browser.storage.session.get(SESSION_KEY);
+    const list = stored[SESSION_KEY];
+    if (!Array.isArray(list)) return;
+    for (const item of list) {
+      const candidate = item as PreviewSession;
+      if (typeof candidate?.tabId === 'number') sessions.set(candidate.tabId, candidate);
+    }
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/** 取会话：内存优先，休眠后从 storage.session 恢复。 */
+async function getSession(tabId: number): Promise<PreviewSession | undefined> {
+  const cached = sessions.get(tabId);
+  if (cached) return cached;
+  await loadSessions();
+  return sessions.get(tabId);
+}
+
 const cdp = createCdpClient({
   attach: (target, version) => browser.debugger.attach(target, version),
   detach: (target) => browser.debugger.detach(target),
@@ -83,7 +120,7 @@ async function notifyToolbar(tabId: number, session: PreviewSession): Promise<vo
 }
 
 async function startPreview(tabId: number): Promise<void> {
-  if (sessions.has(tabId)) {
+  if (await getSession(tabId)) {
     await stopPreview(tabId);
     return;
   }
@@ -103,6 +140,7 @@ async function startPreview(tabId: number): Promise<void> {
     return;
   }
   sessions.set(tabId, session);
+  await persistSessions();
   await applySession(session);
   await notifyToolbar(tabId, session);
 }
@@ -117,8 +155,9 @@ async function isAttached(tabId: number): Promise<boolean> {
 }
 
 async function stopPreview(tabId: number): Promise<void> {
-  const session = sessions.get(tabId);
+  const session = await getSession(tabId);
   sessions.delete(tabId);
+  await persistSessions();
   if (session || (await isAttached(tabId))) {
     try {
       await cdp.clearEmulation(tabId);
@@ -173,13 +212,42 @@ async function mountErrorToolbar(tabId: number, text: string): Promise<void> {
   }
 }
 
+const pending = new Map<number, Promise<void>>();
+
+/** 同一标签页的更新串行执行，避免快速连点造成 CDP 命令乱序。 */
+function queueUpdate(tabId: number, task: () => Promise<void>): Promise<void> {
+  const previous = pending.get(tabId) ?? Promise.resolve();
+  const next = previous.then(task).catch((error: unknown) => {
+    console.warn('[device-simulator] update failed', error);
+  });
+  pending.set(tabId, next);
+  void next.finally(() => {
+    if (pending.get(tabId) === next) pending.delete(tabId);
+  });
+  return next;
+}
+
+async function stepZoom(tabId: number, direction: -1 | 1): Promise<void> {
+  const session = await getSession(tabId);
+  if (!session) return;
+  const device = findDevice(session.deviceId);
+  const viewport = getOrientedViewport(device, session.orientation);
+  const windowSize = await readWindowSize(tabId);
+  const current = resolveZoom(viewport, windowSize, session.zoomMode, session.manualScale);
+  session.zoomMode = 'manual';
+  session.manualScale = Math.round(clampManualScale(current + direction * 0.1) * 100) / 100;
+  await applySession(session);
+  await notifyToolbar(tabId, session);
+}
+
 async function updateSession(
   tabId: number,
   mutate: (session: PreviewSession) => void,
 ): Promise<void> {
-  const session = sessions.get(tabId);
+  const session = await getSession(tabId);
   if (!session) return;
   mutate(session);
+  await persistSessions();
   await applySession(session);
   await notifyToolbar(tabId, session);
 }
@@ -207,35 +275,32 @@ export default defineBackground(() => {
         const rawDeviceId = data.payload?.['deviceId'];
         const deviceId = typeof rawDeviceId === 'string' ? rawDeviceId : '';
         if (SYSTEM_DEVICES.some((device) => device.id === deviceId)) {
-          void updateSession(tabId, (session) => {
-            session.deviceId = deviceId;
-          });
+          void queueUpdate(tabId, () =>
+            updateSession(tabId, (session) => {
+              session.deviceId = deviceId;
+            }),
+          );
         }
         break;
       }
       case 'TOGGLE_ORIENTATION':
-        void updateSession(tabId, (session) => {
-          session.orientation = session.orientation === 'portrait' ? 'landscape' : 'portrait';
-        });
+        void queueUpdate(tabId, () =>
+          updateSession(tabId, (session) => {
+            session.orientation = session.orientation === 'portrait' ? 'landscape' : 'portrait';
+          }),
+        );
         break;
       case 'STEP_ZOOM': {
         const direction = Number(data.payload?.direction) === -1 ? -1 : 1;
-        void updateSession(tabId, (session) => {
-          const device = findDevice(session.deviceId);
-          const viewport = getOrientedViewport(device, session.orientation);
-          const current =
-            session.zoomMode === 'auto'
-              ? resolveZoom(viewport, { width: 1280, height: 800 }, 'auto', session.manualScale)
-              : session.manualScale;
-          session.zoomMode = 'manual';
-          session.manualScale = Math.round(clampManualScale(current + direction * 0.1) * 100) / 100;
-        });
+        void queueUpdate(tabId, () => stepZoom(tabId, direction));
         break;
       }
       case 'AUTO_ZOOM':
-        void updateSession(tabId, (session) => {
-          session.zoomMode = 'auto';
-        });
+        void queueUpdate(tabId, () =>
+          updateSession(tabId, (session) => {
+            session.zoomMode = 'auto';
+          }),
+        );
         break;
       default:
         break;
@@ -245,9 +310,12 @@ export default defineBackground(() => {
 
   browser.tabs.onRemoved.addListener((tabId) => {
     sessions.delete(tabId);
+    void persistSessions();
   });
 
   browser.debugger.onDetach.addListener((source) => {
-    if (source.tabId !== undefined) sessions.delete(source.tabId);
+    if (source.tabId === undefined) return;
+    sessions.delete(source.tabId);
+    void persistSessions();
   });
 });

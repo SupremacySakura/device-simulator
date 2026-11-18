@@ -11,6 +11,7 @@ export default defineConfig({
     description:
       'Preview responsive pages with accurate CSS viewports, safe areas, cameras, and device frames.',
     permissions: ['storage', 'activeTab', 'scripting', 'debugger'],
+    // storage.session 需要 storage 权限；Chrome 102+ 默认可用，无需额外声明。
     action: {
       default_title: 'Device Simulator',
     },
