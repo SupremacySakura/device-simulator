@@ -25,10 +25,26 @@ function isStoredDevice(value: unknown): value is DeviceProfile {
   return (
     typeof candidate.id === 'string' &&
     typeof candidate.name === 'string' &&
-    typeof candidate.portrait === 'object' &&
-    candidate.portrait !== null &&
-    typeof candidate.landscape === 'object' &&
-    candidate.landscape !== null
+    isStoredViewport(candidate.portrait) &&
+    isStoredViewport(candidate.landscape)
+  );
+}
+
+/** 只校验覆盖层真正用到的字段，损坏的存档设备会被静默丢弃而不是画成空框。 */
+function isStoredViewport(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  const viewport = value as Partial<DeviceViewport>;
+  const safeArea = viewport.safeArea;
+  return (
+    typeof viewport.width === 'number' &&
+    viewport.width > 0 &&
+    typeof viewport.height === 'number' &&
+    viewport.height > 0 &&
+    typeof safeArea === 'object' &&
+    safeArea !== null &&
+    [safeArea.top, safeArea.right, safeArea.bottom, safeArea.left].every(
+      (inset) => typeof inset === 'number' && Number.isFinite(inset) && inset >= 0,
+    )
   );
 }
 

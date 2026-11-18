@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStorageReady } from '../../hooks/use-storage-ready';
 import { useDeviceStore } from '../../stores/device-store';
 import { useSettingsStore } from '../../stores/settings-store';
+import { useSimulatorStore } from '../../stores/simulator-store';
 import { tryNormalizeUrl } from '../../utils/url';
 import { CustomDeviceForm } from './CustomDeviceForm';
 import { DeviceStage } from './DeviceStage';
@@ -13,14 +14,17 @@ export function App() {
   const devices = useDeviceStore((state) => state.devices);
   const currentDeviceId = useDeviceStore((state) => state.currentDeviceId);
   const setCurrentDevice = useDeviceStore((state) => state.setCurrentDevice);
+  const orientation = useSimulatorStore((state) => state.orientation);
+  const toggleOrientation = useSimulatorStore((state) => state.toggleOrientation);
+  const zoomMode = useSimulatorStore((state) => state.zoomMode);
+  const manualScale = useSimulatorStore((state) => state.manualScale);
+  const setZoomMode = useSimulatorStore((state) => state.setZoomMode);
+  const stepScale = useSimulatorStore((state) => state.stepScale);
 
   const [input, setInput] = useState('');
   const [url, setUrl] = useState('');
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
-  const [zoomMode, setZoomMode] = useState<'auto' | 'manual'>('auto');
-  const [manualScale, setManualScale] = useState(0.6);
   const stageRef = useRef<HTMLDivElement>(null);
   const [windowSize, setWindowSize] = useState({ width: 1280, height: 800 });
 
@@ -121,7 +125,7 @@ export function App() {
 
         <button
           type="button"
-          onClick={() => setOrientation((o) => (o === 'portrait' ? 'landscape' : 'portrait'))}
+          onClick={toggleOrientation}
           className="rounded-md px-2 py-1.5 text-[12px] font-medium text-[#111] hover:bg-[#F3F4F6]"
         >
           {orientation === 'portrait' ? '竖屏' : '横屏'}
@@ -131,10 +135,7 @@ export function App() {
           <button
             type="button"
             aria-label="缩小"
-            onClick={() => {
-              setZoomMode('manual');
-              setManualScale((s) => Math.max(0.1, Math.round((s - 0.1) * 100) / 100));
-            }}
+            onClick={() => stepScale(-1)}
             className="rounded-md px-2 py-1.5 text-[12px] text-[#111] hover:bg-[#F3F4F6]"
           >
             −
@@ -153,10 +154,7 @@ export function App() {
           <button
             type="button"
             aria-label="放大"
-            onClick={() => {
-              setZoomMode('manual');
-              setManualScale((s) => Math.min(3, Math.round((s + 0.1) * 100) / 100));
-            }}
+            onClick={() => stepScale(1)}
             className="rounded-md px-2 py-1.5 text-[12px] text-[#111] hover:bg-[#F3F4F6]"
           >
             +
