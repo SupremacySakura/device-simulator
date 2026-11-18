@@ -81,7 +81,9 @@ export function mountOverlay(init: OverlayInit): void {
     .bar.visible { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
     .zone { position: absolute; top: 0; left: 50%; transform: translateX(-50%);
             width: 320px; height: 16px; }
-    .zone.gone { display: none; }
+    /* 可见时只让出指针事件，保持焦点不丢失，避免键盘用户被踢回页面顶部。 */
+    .zone.gone { pointer-events: none; }
+    .zone:focus-visible { outline: 2px solid #C2410C; outline-offset: 2px; border-radius: 4px; }
     select, button {
       all: unset; box-sizing: border-box; cursor: pointer;
       padding: 6px 8px; border-radius: 6px; font: inherit; color: inherit;
@@ -133,6 +135,10 @@ export function mountOverlay(init: OverlayInit): void {
 
   const zone = document.createElement('div');
   zone.className = 'zone';
+  // 工具条隐藏时控件不可聚焦，键盘用户需要一个能把它叫出来的入口。
+  zone.tabIndex = 0;
+  zone.setAttribute('role', 'button');
+  zone.setAttribute('aria-label', '显示预览控制条');
 
   const bar = document.createElement('div');
   bar.className = 'bar';
@@ -298,6 +304,13 @@ export function mountOverlay(init: OverlayInit): void {
 
   zone.addEventListener('mouseenter', keepVisible);
   zone.addEventListener('click', keepVisible);
+  zone.addEventListener('focus', keepVisible);
+  zone.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    keepVisible();
+    select.focus();
+  });
   bar.addEventListener('mouseenter', keepVisible);
   bar.addEventListener('focusin', keepVisible);
   bar.addEventListener('mouseleave', () => {
