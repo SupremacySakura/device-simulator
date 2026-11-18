@@ -1,62 +1,82 @@
 import { create } from 'zustand';
-import { SYSTEM_DEVICES } from '../constants/default-devices';
-import type { DeviceCategory, DeviceProfile } from '../types/device';
-import { cloneDeviceProfile, copyDeviceAsCustom } from '../utils/device-profile';
+import { DEFAULT_DEVICE_ID, SYSTEM_DEVICES } from '../constants/default-devices';
+import type { DeviceProfile, DeviceViewport, SafeAreaInsets } from '../types/device';
 
-export type DeviceCategoryFilter = DeviceCategory | 'all';
+export interface CustomDeviceInput {
+  name: string;
+  width: number;
+  height: number;
+  safeArea: SafeAreaInsets;
+}
 
 export interface PersistedDeviceData {
   customDevices: DeviceProfile[];
-  favoriteIds: string[];
   currentDeviceId: string;
 }
 
 interface DeviceStoreState {
   devices: DeviceProfile[];
   currentDeviceId: string;
-  searchQuery: string;
-  categoryFilter: DeviceCategoryFilter;
   hydrated: boolean;
-  setHydrated: (value: boolean) => void;
   hydrate: (data: PersistedDeviceData | null) => void;
   setCurrentDevice: (id: string) => void;
-  setSearchQuery: (query: string) => void;
-  setCategoryFilter: (category: DeviceCategoryFilter) => void;
-  toggleFavorite: (id: string) => void;
-  addDevice: (device: DeviceProfile) => void;
-  updateDevice: (device: DeviceProfile) => boolean;
+  addCustomDevice: (input: CustomDeviceInput, id?: string) => DeviceProfile;
   removeDevice: (id: string) => boolean;
-  duplicateDevice: (id: string, name?: string) => DeviceProfile | null;
-  replaceCustomDevices: (devices: DeviceProfile[]) => void;
+}
+
+function cloneViewport(viewport: DeviceViewport): DeviceViewport {
+  return { ...viewport, safeArea: { ...viewport.safeArea } };
+}
+
+export function cloneDevice(device: DeviceProfile): DeviceProfile {
+  return {
+    ...device,
+    portrait: cloneViewport(device.portrait),
+    landscape: cloneViewport(device.landscape),
+  };
+}
+
+/** 横屏安全区由竖屏逆时针旋转得到，保证自定义设备无需填两套。 */
+export function rotateSafeArea(insets: SafeAreaInsets): SafeAreaInsets {
+  return { top: insets.right, right: insets.bottom, bottom: insets.left, left: insets.top };
+}
+
+export function buildCustomDevice(
+  input: CustomDeviceInput,
+  id: string,
+  now = Date.now(),
+): DeviceProfile {
+  const safeArea: SafeAreaInsets = { ...input.safeArea };
+  return {
+    id,
+    name: input.name.trim(),
+    category: 'custom',
+    devicePixelRatio: 1,
+    portrait: { width: input.width, height: input.height, safeArea },
+    landscape: {
+      width: input.height,
+      height: input.width,
+      safeArea: rotateSafeArea(safeArea),
+    },
+    isSystem: false,
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 function mergeDevices(data: PersistedDeviceData | null): DeviceProfile[] {
-  const favoriteIds = new Set(data?.favoriteIds ?? []);
-  const usePresetFavorites = data === null;
-  const systems = SYSTEM_DEVICES.map((device) => ({
-    ...cloneDeviceProfile(device),
-    favorite: usePresetFavorites ? device.favorite : favoriteIds.has(device.id),
-  }));
+  const systems = SYSTEM_DEVICES.map(cloneDevice);
   const systemIds = new Set(systems.map((device) => device.id));
   const customs = (data?.customDevices ?? [])
     .filter((device) => !systemIds.has(device.id))
-    .map((device) => ({
-      ...cloneDeviceProfile(device),
-      isSystem: false,
-      confidence: 'unverified' as const,
-      favorite: usePresetFavorites ? device.favorite : favoriteIds.has(device.id),
-    }));
+    .map((device) => ({ ...cloneDevice(device), isSystem: false }));
   return [...systems, ...customs];
 }
 
 export const useDeviceStore = create<DeviceStoreState>((set, get) => ({
   devices: mergeDevices(null),
-  currentDeviceId: SYSTEM_DEVICES[0]?.id ?? '',
-  searchQuery: '',
-  categoryFilter: 'all',
+  currentDeviceId: DEFAULT_DEVICE_ID,
   hydrated: false,
-
-  setHydrated: (value) => set({ hydrated: value }),
 
   hydrate: (data) => {
     const devices = mergeDevices(data);
@@ -72,42 +92,13 @@ export const useDeviceStore = create<DeviceStoreState>((set, get) => ({
     if (get().devices.some((device) => device.id === id)) set({ currentDeviceId: id });
   },
 
-  setSearchQuery: (query) => set({ searchQuery: query }),
-  setCategoryFilter: (category) => set({ categoryFilter: category }),
-
-  toggleFavorite: (id) =>
+  addCustomDevice: (input, id = crypto.randomUUID()) => {
+    const device = buildCustomDevice(input, id);
     set((state) => ({
-      devices: state.devices.map((device) =>
-        device.id === id ? { ...device, favorite: !device.favorite } : device,
-      ),
-    })),
-
-  addDevice: (device) => {
-    const custom = {
-      ...cloneDeviceProfile(device),
-      isSystem: false,
-      confidence: 'unverified' as const,
-      updatedAt: Date.now(),
-    };
-    set((state) => ({
-      devices: [...state.devices.filter((item) => item.id !== custom.id), custom],
-      currentDeviceId: custom.id,
+      devices: [...state.devices.filter((item) => item.id !== device.id), device],
+      currentDeviceId: device.id,
     }));
-  },
-
-  updateDevice: (device) => {
-    const existing = get().devices.find((item) => item.id === device.id);
-    if (!existing || existing.isSystem) return false;
-    const updated = {
-      ...cloneDeviceProfile(device),
-      isSystem: false,
-      confidence: 'unverified' as const,
-      updatedAt: Date.now(),
-    };
-    set((state) => ({
-      devices: state.devices.map((item) => (item.id === updated.id ? updated : item)),
-    }));
-    return true;
+    return device;
   },
 
   removeDevice: (id) => {
@@ -123,31 +114,6 @@ export const useDeviceStore = create<DeviceStoreState>((set, get) => ({
     });
     return true;
   },
-
-  duplicateDevice: (id, name) => {
-    const source = get().devices.find((device) => device.id === id);
-    if (!source) return null;
-    const copy = copyDeviceAsCustom(source, name ? { name } : {});
-    set((state) => ({ devices: [...state.devices, copy], currentDeviceId: copy.id }));
-    return copy;
-  },
-
-  replaceCustomDevices: (customDevices) =>
-    set((state) => {
-      const systems = state.devices.filter((device) => device.isSystem);
-      const normalized = customDevices.map((device) => ({
-        ...cloneDeviceProfile(device),
-        isSystem: false,
-        confidence: 'unverified' as const,
-      }));
-      const devices = [...systems, ...normalized];
-      return {
-        devices,
-        currentDeviceId: devices.some((device) => device.id === state.currentDeviceId)
-          ? state.currentDeviceId
-          : (devices[0]?.id ?? ''),
-      };
-    }),
 }));
 
 export function selectCurrentDevice(state: DeviceStoreState): DeviceProfile | undefined {
@@ -156,8 +122,7 @@ export function selectCurrentDevice(state: DeviceStoreState): DeviceProfile | un
 
 export function serializeDeviceStore(state: DeviceStoreState): PersistedDeviceData {
   return {
-    customDevices: state.devices.filter((device) => !device.isSystem).map(cloneDeviceProfile),
-    favoriteIds: state.devices.filter((device) => device.favorite).map((device) => device.id),
+    customDevices: state.devices.filter((device) => !device.isSystem).map(cloneDevice),
     currentDeviceId: state.currentDeviceId,
   };
 }

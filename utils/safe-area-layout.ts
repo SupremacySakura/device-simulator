@@ -1,4 +1,4 @@
-import type { DeviceViewportConfig } from '../types/device';
+import type { DeviceViewport } from '../types/device';
 
 export interface DeviceContentRect {
   x: number;
@@ -7,7 +7,7 @@ export interface DeviceContentRect {
   height: number;
 }
 
-export function getDeviceContentRect(viewport: DeviceViewportConfig): DeviceContentRect {
+export function getDeviceContentRect(viewport: DeviceViewport): DeviceContentRect {
   const { safeArea } = viewport;
   return {
     x: safeArea.left,

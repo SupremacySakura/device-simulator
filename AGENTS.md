@@ -30,3 +30,17 @@ Vitest 在 Node 环境运行 `**/*.test.ts`。测试文件按被测单元或行�
 ## 提交与 Pull Request 规范
 
 近期提交采用带作用域的 Conventional Commits，例如 `feat(panel-layout): ...`。标题应简洁并使用祈使语气，例如 `fix(simulator): 修复旋转后缩放丢失`；默认中文，但单次提交需保持一致。PR 应说明用户可见的变化、列出验证命令、关联相关 Issue，并为 UI 变更附截图或短视频。若涉及扩展权限、存储结构或浏览器兼容性，必须明确说明。
+
+## Agent skills
+
+### Issue tracker
+
+议题通过 GitHub Issues 跟踪（仓库 `SupremacySakura/device-simulator`，使用 `gh` CLI)。参见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+使用五种规范分诊标签：`needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix`。参见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+单上下文（single-context）布局：根目录 `GLOSSARY.md` + `docs/adr/`。参见 `docs/agents/domain.md`。

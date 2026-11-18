@@ -1,37 +1,48 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { useSimulatorStore, type PersistedSimulatorData } from '../stores/simulator-store';
-import { MAX_MANUAL_SCALE, MIN_MANUAL_SCALE } from '../utils/device-scale';
+import { useSimulatorStore } from '../stores/simulator-store';
 
-const DEFAULT_SIMULATOR: PersistedSimulatorData = {
-  url: '',
-  orientation: 'portrait',
-  scale: 'auto',
-  showSafeArea: true,
-  showRulers: true,
-  showGrid: false,
-  showShadow: true,
-  leftPanelCollapsed: false,
-  rightPanelCollapsed: false,
-  canvasBackground: '#f9fafb',
-};
-
-beforeEach(() => useSimulatorStore.getState().hydrate({ ...DEFAULT_SIMULATOR }));
-
-describe('simulator manual scale state', () => {
-  it('keeps arbitrary finite zoom values and clamps them to the supported range', () => {
-    useSimulatorStore.getState().setScale(0.83);
-    expect(useSimulatorStore.getState().scale).toBe(0.83);
-
-    useSimulatorStore.getState().setScale(100);
-    expect(useSimulatorStore.getState().scale).toBe(MAX_MANUAL_SCALE);
-
-    useSimulatorStore.getState().setScale(0.001);
-    expect(useSimulatorStore.getState().scale).toBe(MIN_MANUAL_SCALE);
+describe('simulator store', () => {
+  beforeEach(() => {
+    useSimulatorStore.getState().hydrate(null);
   });
 
-  it('preserves automatic scale mode', () => {
-    useSimulatorStore.getState().setScale(1.17);
-    useSimulatorStore.getState().setScale('auto');
-    expect(useSimulatorStore.getState().scale).toBe('auto');
+  it('默认竖屏、自动缩放', () => {
+    const state = useSimulatorStore.getState();
+    expect(state.orientation).toBe('portrait');
+    expect(state.zoomMode).toBe('auto');
+  });
+
+  it('切换方向在竖屏与横屏之间往返', () => {
+    useSimulatorStore.getState().toggleOrientation();
+    expect(useSimulatorStore.getState().orientation).toBe('landscape');
+    useSimulatorStore.getState().toggleOrientation();
+    expect(useSimulatorStore.getState().orientation).toBe('portrait');
+  });
+
+  it('步进缩放会切换到手动模式', () => {
+    useSimulatorStore.getState().stepScale(1);
+    const state = useSimulatorStore.getState();
+    expect(state.zoomMode).toBe('manual');
+    expect(state.manualScale).toBeCloseTo(0.7, 5);
+  });
+
+  it('手动缩放被限制在 10% 到 300%', () => {
+    useSimulatorStore.getState().setManualScale(0.001);
+    expect(useSimulatorStore.getState().manualScale).toBeCloseTo(0.1, 5);
+    useSimulatorStore.getState().setManualScale(99);
+    expect(useSimulatorStore.getState().manualScale).toBeCloseTo(3, 5);
+  });
+
+  it('hydrate 恢复已保存的 URL 与缩放', () => {
+    useSimulatorStore.getState().hydrate({
+      url: 'http://localhost:3000',
+      orientation: 'landscape',
+      zoomMode: 'manual',
+      manualScale: 1.2,
+    });
+    const state = useSimulatorStore.getState();
+    expect(state.url).toBe('http://localhost:3000');
+    expect(state.orientation).toBe('landscape');
+    expect(state.manualScale).toBeCloseTo(1.2, 5);
   });
 });

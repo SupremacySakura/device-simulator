@@ -10,14 +10,10 @@ export default defineConfig({
     name: 'Device Simulator',
     description:
       'Preview responsive pages with accurate CSS viewports, safe areas, cameras, and device frames.',
-    permissions: ['storage', 'activeTab', 'scripting'],
-    web_accessible_resources: [
-      {
-        resources: ['simulator.html'],
-        matches: ['http://*/*', 'https://*/*'],
-        use_dynamic_url: true,
-      },
-    ],
+    permissions: ['storage', 'activeTab', 'scripting', 'debugger'],
+    action: {
+      default_title: 'Device Simulator',
+    },
     browser_specific_settings: {
       gecko: {
         id: 'device-simulator@example.local',
