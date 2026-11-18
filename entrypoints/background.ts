@@ -12,12 +12,25 @@ import {
   toSafeAreaOverride,
 } from '../utils/viewport-transform';
 
+interface WindowSize {
+  width: number;
+  height: number;
+}
+
 interface PreviewSession {
   tabId: number;
+  windowId: number | null;
   deviceId: string;
   orientation: DeviceOrientation;
   zoomMode: 'auto' | 'manual';
   manualScale: number;
+  /**
+   * 模拟生效前的真实内容区尺寸。必须在 attach 之前测量：
+   * 一旦 CDP 生效，页面里的 innerWidth/innerHeight 就变成设备视口了。
+   */
+  windowSize: WindowSize;
+  /** 窗口外框与内容区的差值，用于窗口缩放后换算。 */
+  chromeDelta: WindowSize;
 }
 
 const sessions = new Map<number, PreviewSession>();
@@ -119,10 +132,13 @@ function toolbarInit(
 }
 
 /**
- * 读取标签页可用的内容区尺寸。窗口外框包含标签栏与地址栏，
- * 直接用它会高估可用高度（约 80–110px），导致设备底部被裁掉。
+ * 在应用模拟之前测量真实内容区，并记下窗口外框与内容区的差值。
+ * 之后 CDP 生效，页面内的 innerWidth 不再代表真实窗口。
  */
-async function readWindowSize(tabId: number): Promise<{ width: number; height: number }> {
+async function measureWindow(
+  tabId: number,
+): Promise<{ windowSize: WindowSize; chromeDelta: WindowSize }> {
+  let content: WindowSize | null = null;
   try {
     const [result] = await browser.scripting.executeScript({
       target: { tabId },
@@ -130,37 +146,46 @@ async function readWindowSize(tabId: number): Promise<{ width: number; height: n
     });
     const size = result?.result;
     if (size && typeof size.width === 'number' && typeof size.height === 'number') {
-      return size;
+      content = { width: size.width, height: size.height };
     }
   } catch {
-    /* 页面不可脚本化时回落到窗口尺寸 */
+    /* 页面不可脚本化 */
   }
+
+  let outer: WindowSize | null = null;
   try {
     const tab = await browser.tabs.get(tabId);
     if (tab.windowId !== undefined) {
       const win = await browser.windows.get(tab.windowId);
       if (typeof win.width === 'number' && typeof win.height === 'number') {
-        return { width: win.width, height: win.height - 96 };
+        outer = { width: win.width, height: win.height };
       }
     }
   } catch {
     /* 忽略 */
   }
-  return { width: 1280, height: 800 };
+
+  const windowSize = content ?? { width: 1280, height: 800 };
+  const chromeDelta = outer
+    ? {
+        width: Math.max(0, outer.width - windowSize.width),
+        height: Math.max(0, outer.height - windowSize.height),
+      }
+    : { width: 0, height: 96 };
+  return { windowSize, chromeDelta };
 }
 
 async function applySession(session: PreviewSession): Promise<void> {
   const device = findDevice(session.deviceId);
   const viewport = getOrientedViewport(device, session.orientation);
-  const windowSize = await readWindowSize(session.tabId);
-  const zoom = resolveZoom(viewport, windowSize, session.zoomMode, session.manualScale);
+  const zoom = resolveZoom(viewport, session.windowSize, session.zoomMode, session.manualScale);
   const metrics = toEmulationMetrics(device, session.orientation, zoom);
   const safeArea = toSafeAreaOverride(device, session.orientation);
   await cdp.applyEmulation(session.tabId, metrics, safeArea);
 }
 
 async function notifyToolbar(tabId: number, session: PreviewSession): Promise<void> {
-  const init = toolbarInit(session, await readWindowSize(tabId));
+  const init = toolbarInit(session, session.windowSize);
   await browser.scripting.executeScript({
     target: { tabId },
     func: mountToolbar,
@@ -174,12 +199,22 @@ async function startPreview(tabId: number): Promise<void> {
     await stopPreview(tabId);
     return;
   }
+  const { windowSize, chromeDelta } = await measureWindow(tabId);
+  let windowId: number | null = null;
+  try {
+    windowId = (await browser.tabs.get(tabId)).windowId ?? null;
+  } catch {
+    windowId = null;
+  }
   const session: PreviewSession = {
     tabId,
+    windowId,
     deviceId: SYSTEM_DEVICES[0]!.id,
     orientation: 'portrait',
     zoomMode: 'auto',
     manualScale: 0.6,
+    windowSize,
+    chromeDelta,
   };
   try {
     await cdp.attach(tabId);
@@ -297,8 +332,7 @@ async function stepZoom(tabId: number, direction: -1 | 1): Promise<void> {
   if (!session) return;
   const device = findDevice(session.deviceId);
   const viewport = getOrientedViewport(device, session.orientation);
-  const windowSize = await readWindowSize(tabId);
-  const current = resolveZoom(viewport, windowSize, session.zoomMode, session.manualScale);
+  const current = resolveZoom(viewport, session.windowSize, session.zoomMode, session.manualScale);
   session.zoomMode = 'manual';
   session.manualScale = Math.round(clampManualScale(current + direction * 0.1) * 100) / 100;
   await applySession(session);
@@ -371,6 +405,22 @@ export default defineBackground(() => {
         break;
     }
     return undefined;
+  });
+
+  browser.windows.onBoundsChanged.addListener((win) => {
+    if (win.id === undefined || win.width === undefined || win.height === undefined) return;
+    for (const session of sessions.values()) {
+      if (session.windowId !== win.id) continue;
+      session.windowSize = {
+        width: Math.max(1, win.width - session.chromeDelta.width),
+        height: Math.max(1, win.height - session.chromeDelta.height),
+      };
+      void queueUpdate(session.tabId, () =>
+        updateSession(session.tabId, () => {
+          /* 尺寸已在上面更新，这里只需重算并下发 */
+        }),
+      );
+    }
   });
 
   browser.tabs.onRemoved.addListener((tabId) => {
