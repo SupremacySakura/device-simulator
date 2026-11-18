@@ -10,8 +10,7 @@ export default defineConfig({
     name: 'Device Simulator',
     description:
       'Preview any page at a real device viewport, with accurate media queries and safe areas.',
-    permissions: ['storage', 'activeTab', 'scripting', 'debugger'],
-    // storage.session 需要 storage 权限；Chrome 102+ 默认可用，无需额外声明。
+    permissions: ['storage', 'activeTab', 'scripting'],
     action: {
       default_title: 'Device Simulator',
     },

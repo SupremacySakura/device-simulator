@@ -2,13 +2,13 @@
 
 ## 项目结构与模块组织
 
-本项目是使用 React、TypeScript 和 WXT 构建的浏览器扩展。入口位于 `entrypoints/`：`background.ts` 负责图标点击、CDP 会话与工具条更新，`simulator/` 是输入地址的独立入口（通过 `options_ui` 打开）。目标页的悬浮工具条以自包含函数形式注入，不依赖 React。
+本项目是使用 React、TypeScript 和 WXT 构建的浏览器扩展。入口位于 `entrypoints/`：`background.ts` 负责图标点击与一次性注入覆盖层，`simulator/` 是输入地址的工作台（通过 `options_ui` 打开），`demo/` 提供离线示例。
 
-模拟通过 `chrome.debugger` 的 DevTools 协议完成（见 `docs/adr/0006`）。这决定了几个不可动摇的边界：不绘制设备外壳、DevTools 已打开时无法附加、必须声明 `debugger` 权限。
+预览通过注入的覆盖层完成（见 `docs/adr/0008`）：覆盖层内放一个指向目标页的 iframe，iframe 的 CSS 尺寸严格等于设备视口，外层用 `transform: scale()` 缩放，刘海与 Home Indicator 由画在 iframe 之上的遮挡层表达。这决定了几个不可动摇的边界：目标页会重新加载、部分站点禁止被嵌入、无法伪造 DPR。不要重新引入 `chrome.debugger` 或第二条渲染路径。
 
 状态放在 `stores/`，浏览器 API 与持久化边界放在 `services/`，共享逻辑放在 `utils/`，规范数据类型放在 `types/`。默认值归入 `constants/`，可复用 React 行为归入 `hooks/`，单元测试统一放在 `tests/`。不要编辑或提交自动生成的 `.output/` 和 `.wxt/` 文件。
 
-`services/toolbar-inject.ts` 里注入的函数会被 `scripting.executeScript` 序列化，必须自包含——不能引用模块作用域的导入或变量。
+`services/overlay-inject.ts` 里注入的函数会被 `scripting.executeScript` 序列化，必须自包含——不能引用模块作用域的导入、常量或辅助函数（序列化后会变成 `undefined`，且不会在构建期报错）。需要共享的几何计算放在 `utils/`，由 background 先算好，作为纯数据传入。
 
 ## 构建、测试与开发命令
 

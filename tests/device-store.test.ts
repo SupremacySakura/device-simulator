@@ -58,7 +58,7 @@ describe('device store', () => {
 });
 
 describe('rotateSafeArea', () => {
-  it('顺时针旋转：上边缘转到右边缘，与 CDP 横屏方向一致', () => {
+  it('顺时针旋转：上边缘转到右边缘，与真机横屏方向一致', () => {
     expect(rotateSafeArea({ top: 1, right: 2, bottom: 3, left: 4 })).toEqual({
       top: 4,
       right: 1,

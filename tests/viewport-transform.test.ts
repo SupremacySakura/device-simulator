@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 import type { DeviceProfile } from '../types/device';
 import {
   AUTO_ZOOM_PADDING,
+  FRAME_BEZEL,
   MAX_ZOOM,
   MIN_ZOOM,
   calculateAutoZoom,
   clampZoom,
   getOrientedViewport,
   resolveZoom,
-  toEmulationMetrics,
-  toSafeAreaOverride,
+  toDeviceLayout,
 } from '../utils/viewport-transform';
 
 function device(overrides: Partial<DeviceProfile> = {}): DeviceProfile {
@@ -48,14 +48,26 @@ describe('clampZoom', () => {
 });
 
 describe('calculateAutoZoom', () => {
-  it('在窗口足够大时不放大超过 100%', () => {
+  it('窗口足够大时不放大超过 100%', () => {
     expect(calculateAutoZoom(device().portrait, { width: 4000, height: 4000 })).toBe(1);
   });
 
-  it('在窗口较小时按最小边缩放并留出边距', () => {
-    const zoom = calculateAutoZoom(device().portrait, { width: 300, height: 1000 });
-    const expected = (300 - AUTO_ZOOM_PADDING * 2) / 393;
-    expect(zoom).toBeCloseTo(expected, 5);
+  it('窗口较窄时按宽度缩放并留出边距', () => {
+    const zoom = calculateAutoZoom(device().portrait, { width: 300, height: 2000 });
+    expect(zoom).toBeCloseTo((300 - AUTO_ZOOM_PADDING * 2) / (393 + FRAME_BEZEL * 2), 5);
+  });
+
+  it('机身留白也计入适应尺寸，设备不会被裁切', () => {
+    const viewport = device().portrait;
+    const windowSize = { width: 500, height: 1000 };
+    const frameWidth = viewport.width + FRAME_BEZEL * 2;
+    const frameHeight = viewport.height + FRAME_BEZEL * 2;
+    const zoom = calculateAutoZoom(viewport, windowSize);
+
+    expect(zoom * frameWidth).toBeLessThanOrEqual(windowSize.width - AUTO_ZOOM_PADDING * 2);
+    expect(zoom * frameHeight).toBeLessThanOrEqual(windowSize.height - AUTO_ZOOM_PADDING * 2);
+    // 只按视口宽度计算会得到更大的缩放，那会让机身留白超出窗口。
+    expect(zoom).toBeLessThan((windowSize.width - AUTO_ZOOM_PADDING * 2) / viewport.width);
   });
 
   it('窗口过小时回落到最小缩放', () => {
@@ -65,60 +77,48 @@ describe('calculateAutoZoom', () => {
 
 describe('resolveZoom', () => {
   it('自动模式忽略手动值', () => {
-    const zoom = resolveZoom(device().portrait, { width: 500, height: 1000 }, 'auto', 2);
+    const zoom = resolveZoom(device().portrait, { width: 300, height: 2000 }, 'auto', 2);
     expect(zoom).toBeLessThan(2);
   });
 
   it('手动模式使用并限制手动值', () => {
-    expect(resolveZoom(device().portrait, { width: 500, height: 1000 }, 'manual', 9)).toBe(
+    expect(resolveZoom(device().portrait, { width: 300, height: 2000 }, 'manual', 9)).toBe(
       MAX_ZOOM,
     );
   });
 });
 
-describe('toEmulationMetrics', () => {
-  it('竖屏映射为 portraitPrimary 且角度为 0', () => {
-    const metrics = toEmulationMetrics(device(), 'portrait', 0.6);
-    expect(metrics).toMatchObject({
-      width: 393,
-      height: 852,
-      deviceScaleFactor: 3,
-      scale: 0.6,
-      mobile: true,
-      screenOrientation: { type: 'portraitPrimary', angle: 0 },
-    });
+describe('toDeviceLayout', () => {
+  it('iframe 视口严格等于设备视口，缩放不参与', () => {
+    const layout = toDeviceLayout(device(), 'portrait', 0.5);
+    expect(layout.viewport).toEqual({ width: 393, height: 852 });
   });
 
-  it('横屏映射为 landscapePrimary 且角度为 90', () => {
-    const metrics = toEmulationMetrics(device(), 'landscape', 1);
-    expect(metrics).toMatchObject({
-      width: 852,
-      height: 393,
-      screenOrientation: { type: 'landscapePrimary', angle: 90 },
-    });
+  it('缩放只作用于外层', () => {
+    expect(toDeviceLayout(device(), 'portrait', 0.5).scale).toBe(0.5);
+    expect(toDeviceLayout(device(), 'portrait', 99).scale).toBe(MAX_ZOOM);
   });
 
-  it('平板不标记为 mobile', () => {
-    expect(toEmulationMetrics(device({ category: 'tablet' }), 'portrait', 1).mobile).toBe(false);
+  it('外框尺寸包含机身留白', () => {
+    const layout = toDeviceLayout(device(), 'portrait', 1);
+    expect(layout.frame.width).toBe(393 + FRAME_BEZEL * 2);
+    expect(layout.frame.height).toBe(852 + FRAME_BEZEL * 2);
   });
 
-  it('缩放被限制在合法区间', () => {
-    expect(toEmulationMetrics(device(), 'portrait', 99).scale).toBe(MAX_ZOOM);
+  it('横屏时视口与外框同步旋转', () => {
+    const layout = toDeviceLayout(device(), 'landscape', 1);
+    expect(layout.viewport).toEqual({ width: 852, height: 393 });
+    expect(layout.frame.width).toBe(852 + FRAME_BEZEL * 2);
   });
-});
 
-describe('toSafeAreaOverride', () => {
-  it('竖屏返回竖屏安全区', () => {
-    expect(toSafeAreaOverride(device(), 'portrait')).toEqual({
+  it('遮挡层沿用设备安全区，用于绘制刘海而非收缩视口', () => {
+    expect(toDeviceLayout(device(), 'portrait', 1).mask).toEqual({
       top: 59,
       right: 0,
       bottom: 34,
       left: 0,
     });
-  });
-
-  it('横屏返回旋转后的安全区', () => {
-    expect(toSafeAreaOverride(device(), 'landscape')).toEqual({
+    expect(toDeviceLayout(device(), 'landscape', 1).mask).toEqual({
       top: 0,
       right: 59,
       bottom: 0,
@@ -126,10 +126,15 @@ describe('toSafeAreaOverride', () => {
     });
   });
 
-  it('全零安全区返回 null，表示无需覆盖', () => {
-    const zero = device({
+  it('无刘海设备不产生遮挡', () => {
+    const se = device({
       portrait: { width: 375, height: 667, safeArea: { top: 0, right: 0, bottom: 0, left: 0 } },
     });
-    expect(toSafeAreaOverride(zero, 'portrait')).toBeNull();
+    expect(toDeviceLayout(se, 'portrait', 1).mask).toEqual({
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+    });
   });
 });

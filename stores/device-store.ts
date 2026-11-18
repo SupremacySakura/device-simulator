@@ -37,7 +37,7 @@ export function cloneDevice(device: DeviceProfile): DeviceProfile {
 }
 
 /**
- * 横屏安全区由竖屏顺时针旋转 90° 得到，与 CDP 的 landscapePrimary/angle 90 一致：
+ * 横屏安全区由竖屏顺时针旋转 90° 得到，与真机 landscapePrimary/angle 90 一致：
  * 竖屏上边缘转到横屏右边缘，下边缘转到左边缘。
  */
 export function rotateSafeArea(insets: SafeAreaInsets): SafeAreaInsets {

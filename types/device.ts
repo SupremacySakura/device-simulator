@@ -13,6 +13,8 @@ export interface DeviceViewport {
   width: number;
   height: number;
   safeArea: SafeAreaInsets;
+  /** 屏幕圆角半径，仅用于视觉呈现。 */
+  screenRadius?: number;
 }
 
 export interface DeviceProfile {

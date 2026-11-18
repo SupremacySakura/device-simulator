@@ -1,5 +1,7 @@
 # 用 chrome.debugger 的 CDP 设备模拟替代直接 DOM 变换
 
+> **已被 ADR-0008 取代。** 产品需要设备外壳，而 CDP 无法在视口之外绘制，故回到 iframe 覆盖层。保留原文仅作决策记录。
+
 ADR-0004 决定给目标页根元素应用 `transform: scale()` 来伪造设备视口。实测证明该机制不成立：CSS transform 不改变视口，`@media (max-width: 500px)` 在 1400px 窗口、393px 容器下依然求值为 false。按 ADR-0004 实现会得到"手机形状的框里装着桌面布局"，比不做更糟。
 
 决定：改用 `chrome.debugger` 附加到目标标签页，通过 DevTools 协议 `Emulation.setDeviceMetricsOverride` 设定真实视口与 DPR，通过 `Emulation.setSafeAreaInsetsOverride` 提供真实 `env(safe-area-inset-*)`。实测结果：`innerWidth=393`、`matchMedia('(max-width:500px)')=true`、`devicePixelRatio=3`、`env(safe-area-inset-top)=59px`，且 `scrollY` 保持不变。ADR-0004 据此被取代。
