@@ -5,3 +5,8 @@ coverage
 *.zip
 .DS_Store
 pnpm-debug.log*
+
+# impeccable runtime state
+.impeccable/questions/
+.impeccable/mocks/
+.impeccable/review/

@@ -1,42 +1,134 @@
 import { browser } from 'wxt/browser';
-import { openSimulatorInCurrentTab } from '../services/message-service';
-import { installCompareRuntimeRouter } from '../services/compare-runtime-service';
-import { isExtensionMessage } from '../utils/message';
+import { SYSTEM_DEVICES } from '../constants/default-devices';
+import { STORAGE_KEYS } from '../constants/storage-keys';
+import { mountOverlay, type OverlayDevice, type OverlayInit } from '../services/overlay-inject';
+import type { DeviceProfile, DeviceViewport } from '../types/device';
+import { maskStyle } from '../utils/mask-style';
+import { toMaskShapes } from '../utils/viewport-transform';
+
+/** 覆盖层自包含，background 只做一次性注入，因此无需保存任何会话状态。 */
+async function loadCustomDevices(): Promise<DeviceProfile[]> {
+  try {
+    const stored = await browser.storage.local.get(STORAGE_KEYS.devices);
+    const raw = stored[STORAGE_KEYS.devices] as { data?: { customDevices?: unknown } } | undefined;
+    const list = raw?.data?.customDevices;
+    if (!Array.isArray(list)) return [];
+    return list.filter(isStoredDevice);
+  } catch {
+    return [];
+  }
+}
+
+function isStoredDevice(value: unknown): value is DeviceProfile {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Partial<DeviceProfile>;
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.name === 'string' &&
+    isStoredViewport(candidate.portrait) &&
+    isStoredViewport(candidate.landscape)
+  );
+}
+
+/** 只校验覆盖层真正用到的字段，损坏的存档设备会被静默丢弃而不是画成空框。 */
+function isStoredViewport(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  const viewport = value as Partial<DeviceViewport>;
+  const safeArea = viewport.safeArea;
+  return (
+    typeof viewport.width === 'number' &&
+    viewport.width > 0 &&
+    typeof viewport.height === 'number' &&
+    viewport.height > 0 &&
+    typeof safeArea === 'object' &&
+    safeArea !== null &&
+    [safeArea.top, safeArea.right, safeArea.bottom, safeArea.left].every(
+      (inset) => typeof inset === 'number' && Number.isFinite(inset) && inset >= 0,
+    )
+  );
+}
+
+function toOverlayViewport(viewport: DeviceViewport): OverlayDevice['portrait'] {
+  return {
+    width: viewport.width,
+    height: viewport.height,
+    screenRadius: viewport.screenRadius ?? 36,
+    masks: toMaskShapes(viewport).map(maskStyle),
+  };
+}
+
+function toOverlayDevice(device: DeviceProfile): OverlayDevice {
+  return {
+    id: device.id,
+    name: device.name,
+    portrait: toOverlayViewport(device.portrait),
+    landscape: toOverlayViewport(device.landscape),
+  };
+}
+
+function isPreviewable(url: string | undefined): url is string {
+  return typeof url === 'string' && /^https?:\/\//i.test(url);
+}
+
+async function injectOverlay(tabId: number, targetUrl: string): Promise<void> {
+  const customDevices = await loadCustomDevices();
+  const devices = [...SYSTEM_DEVICES, ...customDevices].map(toOverlayDevice);
+  const first = devices[0];
+  if (!first) return;
+
+  const init: OverlayInit = {
+    targetUrl,
+    devices,
+    currentDeviceId: first.id,
+    orientation: 'portrait',
+    zoomMode: 'auto',
+    manualScale: 0.6,
+  };
+
+  try {
+    await browser.scripting.executeScript({
+      target: { tabId },
+      func: mountOverlay,
+      args: [init],
+    });
+  } catch (error) {
+    // chrome:// 等页面无法注入脚本，只能记录；用户会看到浏览器自身的限制。
+    console.warn('[device-simulator] 无法在此页面注入覆盖层', error);
+  }
+}
 
 export default defineBackground(() => {
-  installCompareRuntimeRouter();
-  browser.runtime.onMessage.addListener((message: unknown) => {
-    if (!isExtensionMessage(message)) return;
-    if (message.type === 'PING') {
-      void browser.runtime.sendMessage({ type: 'PONG' as const }).catch(() => undefined);
+  browser.action.onClicked.addListener((tab) => {
+    if (tab.id === undefined) return;
+    if (!isPreviewable(tab.url)) {
+      console.warn('[device-simulator] 此页面不支持预览');
       return;
     }
-    if (message.type === 'OPEN_SIMULATOR') {
-      const query = new URLSearchParams();
-      const { url, deviceId } = message.payload;
-      if (url) {
-        void browser.tabs
-          .query({ active: true, currentWindow: true })
-          .then(async ([tab]) => {
-            if (tab?.id === undefined) throw new Error('找不到当前标签页。');
-            await openSimulatorInCurrentTab({
-              tabId: tab.id,
-              url,
-              ...(deviceId ? { deviceId } : {}),
-            });
-          })
-          .catch((error: unknown) => {
-            console.warn('[background] Unable to inject simulator', error);
-          });
-        return;
+    void injectOverlay(tab.id, tab.url);
+  });
+
+  // 独立入口：在新标签页打开地址后请求注入。
+  browser.runtime.onMessage.addListener((message: unknown) => {
+    const data = message as { source?: string; type?: string; tabId?: number } | undefined;
+    if (data?.source !== 'device-simulator' || data.type !== 'START') return undefined;
+    if (typeof data.tabId !== 'number') return undefined;
+
+    const tabId = data.tabId;
+    void (async () => {
+      // 新标签页需要时间完成首次加载，轮询到拿到 URL 再注入。
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        try {
+          const tab = await browser.tabs.get(tabId);
+          if (isPreviewable(tab.url) && tab.status === 'complete') {
+            await injectOverlay(tabId, tab.url);
+            return;
+          }
+        } catch {
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250));
       }
-      if (deviceId) query.set('device', deviceId);
-      query.set('blank', '1');
-      const suffix = query.size > 0 ? `?${query.toString()}` : '';
-      const simulatorUrl = `${browser.runtime.getURL('/simulator.html')}${suffix}`;
-      void browser.tabs.create({ url: simulatorUrl }).catch((error: unknown) => {
-        console.warn('[background] Unable to open simulator', error);
-      });
-    }
+    })();
+    return undefined;
   });
 });

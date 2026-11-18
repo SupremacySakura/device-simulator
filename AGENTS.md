@@ -2,9 +2,13 @@
 
 ## 项目结构与模块组织
 
-本项目是使用 React、TypeScript 和 WXT 构建的浏览器扩展。入口位于 `entrypoints/`：`popup/` 用于启动模拟器，`simulator/` 是主工作台，`demo/` 提供离线示例，根目录下的 background/content 脚本负责协调扩展行为。可复用 UI 按职责存放在 `components/`。
+本项目是使用 React、TypeScript 和 WXT 构建的浏览器扩展。入口位于 `entrypoints/`：`background.ts` 负责图标点击与一次性注入覆盖层，`simulator/` 是输入地址的工作台（通过 `options_ui` 打开），`demo/` 提供离线示例。
+
+预览通过注入的覆盖层完成（见 `docs/adr/0008`）：覆盖层内放一个指向目标页的 iframe，iframe 的 CSS 尺寸严格等于设备视口，外层用 `transform: scale()` 缩放，刘海与 Home Indicator 由画在 iframe 之上的遮挡层表达。这决定了几个不可动摇的边界：目标页会重新加载、部分站点禁止被嵌入、无法伪造 DPR。不要重新引入 `chrome.debugger` 或第二条渲染路径。
 
 状态放在 `stores/`，浏览器 API 与持久化边界放在 `services/`，共享逻辑放在 `utils/`，规范数据类型放在 `types/`。默认值归入 `constants/`，可复用 React 行为归入 `hooks/`，单元测试统一放在 `tests/`。不要编辑或提交自动生成的 `.output/` 和 `.wxt/` 文件。
+
+`services/overlay-inject.ts` 里注入的函数会被 `scripting.executeScript` 序列化，必须自包含——不能引用模块作用域的导入、常量或辅助函数（序列化后会变成 `undefined`，且不会在构建期报错）。需要共享的几何计算放在 `utils/`，由 background 先算好，作为纯数据传入。
 
 ## 构建、测试与开发命令
 
@@ -30,3 +34,17 @@ Vitest 在 Node 环境运行 `**/*.test.ts`。测试文件按被测单元或行�
 ## 提交与 Pull Request 规范
 
 近期提交采用带作用域的 Conventional Commits，例如 `feat(panel-layout): ...`。标题应简洁并使用祈使语气，例如 `fix(simulator): 修复旋转后缩放丢失`；默认中文，但单次提交需保持一致。PR 应说明用户可见的变化、列出验证命令、关联相关 Issue，并为 UI 变更附截图或短视频。若涉及扩展权限、存储结构或浏览器兼容性，必须明确说明。
+
+## Agent skills
+
+### Issue tracker
+
+议题通过 GitHub Issues 跟踪（仓库 `SupremacySakura/device-simulator`，使用 `gh` CLI)。参见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+使用五种规范分诊标签：`needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix`。参见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+单上下文（single-context）布局：根目录 `GLOSSARY.md` + `docs/adr/`。参见 `docs/agents/domain.md`。

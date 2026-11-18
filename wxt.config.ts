@@ -9,15 +9,16 @@ export default defineConfig({
   manifest: {
     name: 'Device Simulator',
     description:
-      'Preview responsive pages with accurate CSS viewports, safe areas, cameras, and device frames.',
+      'Preview any page at a real device viewport, with accurate media queries and safe areas.',
     permissions: ['storage', 'activeTab', 'scripting'],
-    web_accessible_resources: [
-      {
-        resources: ['simulator.html'],
-        matches: ['http://*/*', 'https://*/*'],
-        use_dynamic_url: true,
-      },
-    ],
+    action: {
+      default_title: 'Device Simulator',
+    },
+    // 独立入口：右键扩展图标 → 选项，用于预览还没打开的地址。
+    options_ui: {
+      page: 'simulator.html',
+      open_in_tab: true,
+    },
     browser_specific_settings: {
       gecko: {
         id: 'device-simulator@example.local',

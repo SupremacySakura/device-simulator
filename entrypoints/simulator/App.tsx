@@ -1,294 +1,193 @@
-import { useEffect, useRef, useState } from 'react';
-import { browser } from 'wxt/browser';
-import { AboutDialog } from '../../components/common/AboutDialog';
-import { ConfirmDialog } from '../../components/common/ConfirmDialog';
-import { LoadingState } from '../../components/common/StatusState';
-import { SettingsDialog } from '../../components/common/SettingsDialog';
-import { useToast } from '../../components/common/ToastProvider';
-import { DeviceListPanel } from '../../components/device/DeviceListPanel';
-import { DevicePropertyPanel } from '../../components/device/DevicePropertyPanel';
-import { CompareWorkspace } from '../../components/compare/CompareWorkspace';
-import { DeviceEditorDialog } from '../../components/editor/DeviceEditorDialog';
-import { ImportExportDialog } from '../../components/editor/ImportExportDialog';
-import { AppShell } from '../../components/layout/AppShell';
-import { SidebarNavigation } from '../../components/layout/SidebarNavigation';
-import { DeviceCanvas } from '../../components/simulator/DeviceCanvas';
-import { TopToolbar } from '../../components/toolbar/TopToolbar';
-import { useDeviceProfile } from '../../hooks/use-device-profile';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStorageReady } from '../../hooks/use-storage-ready';
-import {
-  createDeviceExportBlob,
-  buildDeviceExportFilename,
-} from '../../services/import-export-service';
-import { setWorkspacePanelCollapsed } from '../../services/panel-layout-service';
-import { captureElementFromVisibleTab, downloadBlob } from '../../services/screenshot-service';
 import { useDeviceStore } from '../../stores/device-store';
-import { useCompareStore } from '../../stores/compare-store';
-import { useHistoryStore } from '../../stores/history-store';
+import { useSettingsStore } from '../../stores/settings-store';
 import { useSimulatorStore } from '../../stores/simulator-store';
-import type { DeviceProfile } from '../../types/device';
-import { parseEmbeddedSimulatorContext } from '../../utils/embedded-context';
 import { tryNormalizeUrl } from '../../utils/url';
-
-type EditorMode = 'add' | 'edit' | 'duplicate';
-
-interface EditorRequest {
-  mode: EditorMode;
-  source: DeviceProfile;
-}
+import { CustomDeviceForm } from './CustomDeviceForm';
+import { DeviceStage } from './DeviceStage';
 
 export function App() {
   const { ready, error: storageError } = useStorageReady();
-  const { device } = useDeviceProfile();
-  const simulator = useSimulatorStore();
-  const workspaceMode = useCompareStore((state) => state.workspaceMode);
-  const addDevice = useDeviceStore((state) => state.addDevice);
-  const updateDevice = useDeviceStore((state) => state.updateDevice);
-  const removeDevice = useDeviceStore((state) => state.removeDevice);
+  const lastUrl = useSettingsStore((state) => state.lastStandaloneUrl);
+  const updateSettings = useSettingsStore((state) => state.updateSettings);
+  const devices = useDeviceStore((state) => state.devices);
+  const currentDeviceId = useDeviceStore((state) => state.currentDeviceId);
   const setCurrentDevice = useDeviceStore((state) => state.setCurrentDevice);
-  const recordUrl = useHistoryStore((state) => state.recordUrl);
-  const recordCombination = useHistoryStore((state) => state.recordCombination);
-  const { showToast } = useToast();
-  const initializedRef = useRef(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [aboutOpen, setAboutOpen] = useState(false);
-  const [importExportOpen, setImportExportOpen] = useState(false);
-  const [editorRequest, setEditorRequest] = useState<EditorRequest | null>(null);
-  const [deleteDevice, setDeleteDevice] = useState<DeviceProfile | null>(null);
-  const embeddedContext =
-    window.parent === window ? null : parseEmbeddedSimulatorContext(window.location.search);
+  const orientation = useSimulatorStore((state) => state.orientation);
+  const toggleOrientation = useSimulatorStore((state) => state.toggleOrientation);
+  const zoomMode = useSimulatorStore((state) => state.zoomMode);
+  const manualScale = useSimulatorStore((state) => state.manualScale);
+  const setZoomMode = useSimulatorStore((state) => state.setZoomMode);
+  const stepScale = useSimulatorStore((state) => state.stepScale);
+
+  const [input, setInput] = useState('');
+  const [url, setUrl] = useState('');
+  const [error, setError] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [windowSize, setWindowSize] = useState({ width: 1280, height: 800 });
 
   useEffect(() => {
-    if (!ready || initializedRef.current) return;
-    initializedRef.current = true;
-    const params = new URLSearchParams(window.location.search);
-    const requestedDevice = params.get('device');
-    if (requestedDevice) setCurrentDevice(requestedDevice);
+    if (ready && lastUrl && !input) setInput(lastUrl);
+  }, [ready, lastUrl, input]);
 
-    const requestedUrl = params.get('url');
-    if (requestedUrl) {
-      const normalized = tryNormalizeUrl(requestedUrl);
-      if (normalized.success) {
-        useCompareStore.getState().setWorkspaceMode('single');
-        simulator.navigate(normalized.url, true);
-        recordUrl(normalized.url);
-      } else {
-        showToast(normalized.error, 'error');
-      }
-    } else if (params.get('blank') === '1') {
-      simulator.clearUrl();
-    } else if (!simulator.url) {
-      let demoUrl: string;
-      try {
-        demoUrl = browser.runtime.getURL('/demo.html');
-      } catch {
-        demoUrl = `${window.location.origin}/demo.html`;
-      }
-      simulator.navigate(demoUrl, true);
+  useEffect(() => {
+    const measure = () => {
+      const rect = stageRef.current?.getBoundingClientRect();
+      if (rect && rect.width > 0) setWindowSize({ width: rect.width, height: rect.height });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (stageRef.current) observer.observe(stageRef.current);
+    return () => observer.disconnect();
+  }, [ready]);
+
+  const device = useMemo(
+    () => devices.find((item) => item.id === currentDeviceId) ?? devices[0],
+    [devices, currentDeviceId],
+  );
+
+  const open = () => {
+    const normalized = tryNormalizeUrl(input);
+    if (!normalized.success) {
+      setError(normalized.error);
+      return;
     }
-  }, [ready, recordUrl, setCurrentDevice, showToast, simulator]);
-
-  useEffect(() => {
-    if (storageError) showToast(storageError, 'error');
-  }, [showToast, storageError]);
-
-  useEffect(() => {
-    if (ready && simulator.url && device) recordCombination(simulator.url, device.id);
-  }, [device, ready, recordCombination, simulator.url]);
+    setError('');
+    setUrl(normalized.url);
+    updateSettings({ lastStandaloneUrl: normalized.url });
+  };
 
   if (!ready) {
     return (
-      <main className="grid h-screen place-items-center bg-[#f7f7f9]">
-        <LoadingState title="正在准备 Device Simulator…" />
+      <main className="grid h-screen place-items-center bg-white text-[13px] text-[#6B7280]">
+        正在准备…
       </main>
     );
   }
 
-  const requestEdit = (target: DeviceProfile) => {
-    setEditorRequest({ mode: target.isSystem ? 'duplicate' : 'edit', source: target });
-  };
-
-  const requestDuplicate = (target: DeviceProfile) => {
-    setEditorRequest({ mode: 'duplicate', source: target });
-  };
-
-  const requestAdd = () => {
-    if (!device) return;
-    setEditorRequest({ mode: 'add', source: device });
-  };
-
-  const exportDevice = (target: DeviceProfile) => {
-    try {
-      const blob = createDeviceExportBlob([target]);
-      downloadBlob(blob, buildDeviceExportFilename(target.name));
-      showToast(`已导出 ${target.name}`);
-    } catch (reason) {
-      showToast(reason instanceof Error ? reason.message : '设备导出失败。', 'error');
-    }
-  };
-
-  const takeScreenshot = async () => {
-    const target = document.querySelector<HTMLElement>('[data-device-capture-target="true"]');
-    if (!target || !device) {
-      showToast('设备预览尚未就绪。', 'error');
-      return;
-    }
-    try {
-      const blob = await captureElementFromVisibleTab(target);
-      const name = device.name.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/gi, '-');
-      downloadBlob(blob, `device-simulator-${name}.png`);
-      showToast('当前可视设备区域截图已保存。');
-    } catch (reason) {
-      showToast(reason instanceof Error ? reason.message : '截图失败。', 'error');
-    }
-  };
-
-  const enterCompareMode = (addCurrent = false) => {
-    const compare = useCompareStore.getState();
-    if (compare.instances.length === 0) compare.setGlobalUrl(simulator.url);
-    if ((addCurrent || compare.instances.length === 0) && device) {
-      const offset = compare.instances.length * 40;
-      compare.addInstance(device.id, {
-        url: simulator.url,
-        orientation: simulator.orientation,
-        scale: simulator.scale === 'auto' ? simulator.resolvedScale : simulator.scale,
-        position: { x: 80 + offset, y: 80 + offset },
-        safeAreaVisible: simulator.showSafeArea,
-        cameraVisible: true,
-        displayFeaturesVisible: true,
-        frameVisible: true,
-      });
-    }
-    compare.setWorkspaceMode('compare');
-  };
-
-  const openCompareInstanceInSingleMode = (instanceId: string) => {
-    const compare = useCompareStore.getState();
-    const instance = compare.instances.find((item) => item.id === instanceId);
-    if (
-      !instance ||
-      !useDeviceStore.getState().devices.some((item) => item.id === instance.deviceId)
-    ) {
-      showToast('该实例引用的设备配置已不存在，请先更换设备。', 'error');
-      return;
-    }
-    setCurrentDevice(instance.deviceId);
-    simulator.setOrientation(instance.orientation);
-    simulator.setScale(instance.scale);
-    simulator.setShowSafeArea(instance.safeAreaVisible);
-    if (instance.url) simulator.navigate(instance.url, true);
-    else simulator.clearUrl();
-    compare.setWorkspaceMode('single');
-  };
-
-  if (workspaceMode === 'compare') {
-    return (
-      <>
-        <CompareWorkspace
-          onOpenSettings={() => setSettingsOpen(true)}
-          onOpenAbout={() => setAboutOpen(true)}
-          onOpenSingleInstance={openCompareInstanceInSingleMode}
+  const stage = (
+    <div ref={stageRef} className="min-h-0 flex-1">
+      {device && url ? (
+        <DeviceStage
+          device={device}
+          url={url}
+          orientation={orientation}
+          zoomMode={zoomMode}
+          manualScale={manualScale}
+          windowSize={windowSize}
         />
-        <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-        <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
-      </>
-    );
-  }
+      ) : (
+        <div className="grid h-full place-items-center px-6 text-center">
+          <p className="text-[13px] text-[#9CA3AF]">输入地址后在这里预览</p>
+        </div>
+      )}
+    </div>
+  );
 
   return (
-    <>
-      <AppShell
-        leftPanelCollapsed={simulator.leftPanelCollapsed}
-        rightPanelCollapsed={simulator.rightPanelCollapsed}
-        onExpandLeftPanel={() => setWorkspacePanelCollapsed('left', false)}
-        onExpandRightPanel={() => setWorkspacePanelCollapsed('right', false)}
-        toolbar={
-          <TopToolbar
-            onScreenshot={() => void takeScreenshot()}
-            onCompare={() => enterCompareMode(true)}
-            onSettings={() => setSettingsOpen(true)}
-            {...(embeddedContext
-              ? {
-                  onClose: () =>
-                    window.parent.postMessage(
-                      {
-                        source: 'device-simulator',
-                        type: 'CLOSE_IN_PAGE_SIMULATOR',
-                        sessionId: embeddedContext.sessionId,
-                      },
-                      embeddedContext.parentOrigin,
-                    ),
-                }
-              : {})}
-          />
-        }
-        navigation={
-          <SidebarNavigation
-            mode="single"
-            onSingle={() => undefined}
-            onCompare={() => enterCompareMode()}
-            onTools={() => showToast('摄像头、标尺和网格工具已集成在画布中。', 'info')}
-            onSettings={() => setSettingsOpen(true)}
-            onAbout={() => setAboutOpen(true)}
-          />
-        }
-        leftPanel={
-          <DeviceListPanel
-            onAdd={requestAdd}
-            onEdit={requestEdit}
-            onDuplicate={requestDuplicate}
-            onExport={exportDevice}
-            onDelete={setDeleteDevice}
-            onImportExport={() => setImportExportOpen(true)}
-            onCollapse={() => setWorkspacePanelCollapsed('left', true)}
-          />
-        }
-        canvas={<DeviceCanvas />}
-        rightPanel={
-          <DevicePropertyPanel
-            onEdit={requestEdit}
-            onDuplicate={requestDuplicate}
-            onCollapse={() => setWorkspacePanelCollapsed('right', true)}
-          />
-        }
-      />
-
-      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
-
-      <ConfirmDialog
-        open={deleteDevice !== null}
-        title="删除自定义设备"
-        message={`确定删除“${deleteDevice?.name ?? ''}”吗？此操作无法撤销。`}
-        confirmLabel="删除"
-        danger
-        onClose={() => setDeleteDevice(null)}
-        onConfirm={() => {
-          if (deleteDevice && removeDevice(deleteDevice.id)) showToast('自定义设备已删除。');
-          setDeleteDevice(null);
-        }}
-      />
-
-      {editorRequest ? (
-        <DeviceEditorDialog
-          open
-          mode={editorRequest.mode}
-          source={editorRequest.source}
-          onClose={() => setEditorRequest(null)}
-          onSave={(savedDevice) => {
-            if (editorRequest.mode === 'edit') updateDevice(savedDevice);
-            else addDevice(savedDevice);
-            simulator.setEditMode(true);
-            setEditorRequest(null);
+    <div className="flex h-screen flex-col bg-white">
+      <header className="flex flex-wrap items-center gap-2 border-b border-[#E5E7EB] px-4 py-2.5">
+        <input
+          type="text"
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') open();
           }}
+          placeholder="localhost:3000"
+          aria-label="页面地址"
+          className="min-w-[180px] flex-1 rounded-md border border-[#E5E7EB] px-2.5 py-1.5 text-[12px] text-[#111] outline-none placeholder:text-[#9CA3AF] focus:border-[#C2410C]"
         />
+        <button
+          type="button"
+          onClick={open}
+          className="rounded-md bg-[#C2410C] px-3 py-1.5 text-[12px] font-medium text-white hover:opacity-90"
+        >
+          加载
+        </button>
+
+        <div className="mx-1 h-4 w-px bg-[#E5E7EB]" />
+
+        <select
+          value={currentDeviceId}
+          onChange={(event) => setCurrentDevice(event.target.value)}
+          aria-label="选择设备"
+          className="max-w-[180px] rounded-md border border-[#E5E7EB] px-2 py-1.5 text-[12px] text-[#111] outline-none focus:border-[#C2410C]"
+        >
+          {devices.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+
+        <button
+          type="button"
+          onClick={toggleOrientation}
+          className="rounded-md px-2 py-1.5 text-[12px] font-medium text-[#111] hover:bg-[#F3F4F6]"
+        >
+          {orientation === 'portrait' ? '竖屏' : '横屏'}
+        </button>
+
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            aria-label="缩小"
+            onClick={() => stepScale(-1)}
+            className="rounded-md px-2 py-1.5 text-[12px] text-[#111] hover:bg-[#F3F4F6]"
+          >
+            −
+          </button>
+          <button
+            type="button"
+            aria-label="自动适应窗口"
+            onClick={() => setZoomMode('auto')}
+            aria-pressed={zoomMode === 'auto'}
+            className={`min-w-[44px] rounded-md px-2 py-1.5 text-[12px] font-medium tabular-nums hover:bg-[#F3F4F6] ${
+              zoomMode === 'auto' ? 'text-[#9A3412]' : 'text-[#111]'
+            }`}
+          >
+            {zoomMode === 'auto' ? '适应' : '自定义'}
+          </button>
+          <button
+            type="button"
+            aria-label="放大"
+            onClick={() => stepScale(1)}
+            className="rounded-md px-2 py-1.5 text-[12px] text-[#111] hover:bg-[#F3F4F6]"
+          >
+            +
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowForm((open) => !open)}
+          className="text-[11px] font-medium text-[#6B7280] underline underline-offset-2 hover:text-[#111]"
+        >
+          {showForm ? '收起' : '自定义设备'}
+        </button>
+      </header>
+
+      {storageError ? (
+        <p className="border-b border-[#FEE2E2] bg-[#FEF2F2] px-4 py-2 text-[11px] text-[#DC2626]">
+          {storageError}
+        </p>
+      ) : null}
+      {error ? (
+        <p className="border-b border-[#FEE2E2] bg-[#FEF2F2] px-4 py-2 text-[11px] text-[#DC2626]">
+          {error}
+        </p>
       ) : null}
 
-      <ImportExportDialog
-        open={importExportOpen}
-        currentDevice={device}
-        onClose={() => setImportExportOpen(false)}
-      />
-    </>
+      {showForm ? (
+        <div className="border-b border-[#E5E7EB] px-4 py-3">
+          <CustomDeviceForm onDone={() => setShowForm(false)} />
+        </div>
+      ) : null}
+
+      {stage}
+    </div>
   );
 }

@@ -1,52 +1,86 @@
 import { useEffect, useState } from 'react';
-import { STORAGE_KEYS, STORAGE_VERSION } from '../constants/storage-keys';
-import { compareStorageService } from '../services/compare-storage-service';
-import { storageService } from '../services/storage-service';
 import {
-  serializeCompareStore,
-  useCompareStore,
-  type CompareStoreState,
-} from '../stores/compare-store';
+  DEFAULT_SETTINGS,
+  serializeSettingsStore,
+  useSettingsStore,
+  type DeviceSimulatorSettings,
+} from '../stores/settings-store';
 import {
   serializeDeviceStore,
   useDeviceStore,
   type PersistedDeviceData,
 } from '../stores/device-store';
 import {
-  sanitizeHistoryData,
-  serializeHistoryStore,
-  useHistoryStore,
-  type PersistedHistoryData,
-} from '../stores/history-store';
-import { serializeSettingsStore, useSettingsStore } from '../stores/settings-store';
-import {
   serializeSimulatorStore,
   useSimulatorStore,
   type PersistedSimulatorData,
 } from '../stores/simulator-store';
-import { DEFAULT_SETTINGS, type DeviceSimulatorSettings } from '../constants/default-settings';
-import type { SimulatorScaleSetting } from '../types/simulator';
-import { isManualScale } from '../utils/device-scale';
-import { tryNormalizeUrl } from '../utils/url';
-import { validateDeviceProfile } from '../utils/validation';
+import { STORAGE_KEYS, STORAGE_VERSION } from '../constants/storage-keys';
+import { storageService } from '../services/storage-service';
+import type { DeviceProfile } from '../types/device';
 
 let initialization: Promise<void> | null = null;
-let subscriptionsReady = false;
 
-function isDefaultScale(value: unknown): value is SimulatorScaleSetting {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function parseDeviceData(value: unknown): PersistedDeviceData | null {
+  if (!isRecord(value)) return null;
+  const customDevices = Array.isArray(value['customDevices'])
+    ? (value['customDevices'] as unknown[]).filter(isStoredDevice)
+    : [];
+  return {
+    customDevices,
+    currentDeviceId: typeof value['currentDeviceId'] === 'string' ? value['currentDeviceId'] : '',
+  };
+}
+
+function isStoredDevice(value: unknown): value is DeviceProfile {
+  if (!isRecord(value)) return false;
+  const portrait = value['portrait'];
+  const landscape = value['landscape'];
   return (
-    value === 'auto' ||
-    value === 0.25 ||
-    value === 0.5 ||
-    value === 0.75 ||
-    value === 1 ||
-    value === 1.25 ||
-    value === 1.5
+    typeof value['id'] === 'string' &&
+    typeof value['name'] === 'string' &&
+    isRecord(portrait) &&
+    isRecord(landscape) &&
+    typeof portrait['width'] === 'number' &&
+    typeof portrait['height'] === 'number' &&
+    isRecord(portrait['safeArea']) &&
+    isRecord(landscape['safeArea'])
   );
 }
 
-function isSimulatorScale(value: unknown): value is SimulatorScaleSetting {
-  return value === 'auto' || isManualScale(value);
+function parseSettings(value: unknown): DeviceSimulatorSettings {
+  if (!isRecord(value)) return DEFAULT_SETTINGS;
+  return {
+    defaultScale:
+      typeof value['defaultScale'] === 'number' && Number.isFinite(value['defaultScale'])
+        ? value['defaultScale']
+        : DEFAULT_SETTINGS.defaultScale,
+    zoomMode: value['zoomMode'] === 'manual' ? 'manual' : 'auto',
+    lastStandaloneUrl:
+      typeof value['lastStandaloneUrl'] === 'string'
+        ? value['lastStandaloneUrl']
+        : DEFAULT_SETTINGS.lastStandaloneUrl,
+  };
+}
+
+function parseSimulator(value: unknown): PersistedSimulatorData | null {
+  if (!isRecord(value)) return null;
+  const orientation = value['orientation'];
+  const zoomMode = value['zoomMode'];
+  const manualScale = value['manualScale'];
+  if (orientation !== 'portrait' && orientation !== 'landscape') return null;
+  if (zoomMode !== 'auto' && zoomMode !== 'manual') return null;
+  if (typeof manualScale !== 'number' || !Number.isFinite(manualScale)) return null;
+  return {
+    url: typeof value['url'] === 'string' ? value['url'] : '',
+    orientation,
+    zoomMode,
+    manualScale,
+  };
 }
 
 function debounceWrite<T>(write: (data: T) => Promise<void>, delay = 180) {
@@ -55,172 +89,42 @@ function debounceWrite<T>(write: (data: T) => Promise<void>, delay = 180) {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       void write(data).catch((error: unknown) =>
-        console.warn('[storage] Deferred write failed', error),
+        console.warn('[storage] deferred write failed', error),
       );
     }, delay);
   };
 }
 
-function parseDeviceData(value: unknown): PersistedDeviceData | null {
-  if (typeof value !== 'object' || value === null) return null;
-  const candidate = value as Partial<PersistedDeviceData>;
-  if (!Array.isArray(candidate.customDevices)) return null;
-  const customDevices = candidate.customDevices.filter(
-    (device) => validateDeviceProfile(device).valid,
-  );
-  const favoriteIds = Array.isArray(candidate.favoriteIds)
-    ? candidate.favoriteIds.filter((id): id is string => typeof id === 'string')
-    : [];
-  return {
-    customDevices,
-    favoriteIds,
-    currentDeviceId: typeof candidate.currentDeviceId === 'string' ? candidate.currentDeviceId : '',
-  };
-}
+async function initialize(): Promise<void> {
+  const [deviceData, settingsData, simulatorData] = await Promise.all([
+    storageService.read<unknown>(STORAGE_KEYS.devices, STORAGE_VERSION),
+    storageService.read<unknown>(STORAGE_KEYS.settings, STORAGE_VERSION),
+    storageService.read<unknown>(STORAGE_KEYS.simulator, STORAGE_VERSION),
+  ]);
 
-function parseSettings(value: unknown): DeviceSimulatorSettings | null {
-  if (typeof value !== 'object' || value === null) return null;
-  const candidate = value as Partial<DeviceSimulatorSettings>;
-  const layout = candidate.layout;
-  if (typeof candidate.defaultDeviceId !== 'string') return null;
-  if (!isDefaultScale(candidate.defaultScale)) return null;
-  if (
-    typeof candidate.showShadow !== 'boolean' ||
-    typeof candidate.showGrid !== 'boolean' ||
-    typeof candidate.autoOpenCurrentPage !== 'boolean' ||
-    typeof layout !== 'object' ||
-    layout === null ||
-    typeof layout.leftPanelCollapsed !== 'boolean' ||
-    typeof layout.rightPanelCollapsed !== 'boolean'
-  ) {
-    return null;
-  }
-  return {
-    defaultDeviceId: candidate.defaultDeviceId,
-    defaultScale: candidate.defaultScale,
-    showShadow: candidate.showShadow,
-    showGrid: candidate.showGrid,
-    autoOpenCurrentPage: candidate.autoOpenCurrentPage,
-    layout: {
-      leftPanelCollapsed: layout.leftPanelCollapsed,
-      rightPanelCollapsed: layout.rightPanelCollapsed,
-    },
-  };
-}
+  useDeviceStore.getState().hydrate(parseDeviceData(deviceData));
+  useSettingsStore.getState().hydrate(parseSettings(settingsData));
+  useSimulatorStore.getState().hydrate(parseSimulator(simulatorData));
 
-function parseHistory(value: unknown): PersistedHistoryData | null {
-  return sanitizeHistoryData(value);
-}
-
-function parseSimulator(value: unknown): PersistedSimulatorData | null {
-  if (typeof value !== 'object' || value === null) return null;
-  const candidate = value as Partial<PersistedSimulatorData>;
-  if (candidate.orientation !== 'portrait' && candidate.orientation !== 'landscape') return null;
-  if (!isSimulatorScale(candidate.scale)) return null;
-  if (
-    typeof candidate.showSafeArea !== 'boolean' ||
-    typeof candidate.showRulers !== 'boolean' ||
-    typeof candidate.showGrid !== 'boolean' ||
-    typeof candidate.showShadow !== 'boolean' ||
-    typeof candidate.leftPanelCollapsed !== 'boolean' ||
-    typeof candidate.rightPanelCollapsed !== 'boolean' ||
-    typeof candidate.canvasBackground !== 'string'
-  ) {
-    return null;
-  }
-  const normalizedUrl =
-    typeof candidate.url === 'string' && candidate.url
-      ? tryNormalizeUrl(candidate.url)
-      : { success: true as const, url: '' };
-  return {
-    url: normalizedUrl.success ? normalizedUrl.url : '',
-    orientation: candidate.orientation,
-    scale: candidate.scale,
-    showSafeArea: candidate.showSafeArea,
-    showRulers: candidate.showRulers,
-    showGrid: candidate.showGrid,
-    showShadow: candidate.showShadow,
-    leftPanelCollapsed: candidate.leftPanelCollapsed,
-    rightPanelCollapsed: candidate.rightPanelCollapsed,
-    canvasBackground: candidate.canvasBackground,
-  };
-}
-
-function setupSubscriptions(): void {
-  if (subscriptionsReady) return;
-  subscriptionsReady = true;
-
-  const persistDevices = debounceWrite((data: PersistedDeviceData) =>
+  const persistDevices = debounceWrite((data: unknown) =>
     storageService.write(STORAGE_KEYS.devices, STORAGE_VERSION, data),
   );
-  const persistSettings = debounceWrite((data: DeviceSimulatorSettings) =>
+  const persistSettings = debounceWrite((data: unknown) =>
     storageService.write(STORAGE_KEYS.settings, STORAGE_VERSION, data),
   );
-  const persistHistory = debounceWrite((data: PersistedHistoryData) =>
-    storageService.write(STORAGE_KEYS.history, STORAGE_VERSION, data),
-  );
-  const persistSimulator = debounceWrite((data: PersistedSimulatorData) =>
+  const persistSimulator = debounceWrite((data: unknown) =>
     storageService.write(STORAGE_KEYS.simulator, STORAGE_VERSION, data),
   );
-  const persistCompare = debounceWrite((data: CompareStoreState) =>
-    compareStorageService.write(serializeCompareStore(data)),
-  );
 
-  useDeviceStore.subscribe((state, previous) => {
-    if (state.hydrated && state !== previous) persistDevices(serializeDeviceStore(state));
+  useDeviceStore.subscribe((state) => {
+    if (state.hydrated) persistDevices(serializeDeviceStore(state));
   });
-  useSettingsStore.subscribe((state, previous) => {
-    if (state.hydrated && state !== previous) persistSettings(serializeSettingsStore(state));
+  useSettingsStore.subscribe((state) => {
+    if (state.hydrated) persistSettings(serializeSettingsStore(state));
   });
-  useHistoryStore.subscribe((state, previous) => {
-    if (state.hydrated && state !== previous) persistHistory(serializeHistoryStore(state));
+  useSimulatorStore.subscribe((state) => {
+    if (state.hydrated) persistSimulator(serializeSimulatorStore(state));
   });
-  useSimulatorStore.subscribe((state, previous) => {
-    if (state.hydrated && state !== previous) persistSimulator(serializeSimulatorStore(state));
-  });
-  useCompareStore.subscribe((state, previous) => {
-    if (state.hydrated && state.persistenceRevision !== previous.persistenceRevision) {
-      persistCompare(state);
-    }
-  });
-}
-
-export function initializeStores(): Promise<void> {
-  initialization ??= (async () => {
-    const [deviceData, settings, history, simulator, compare] = await Promise.all([
-      storageService.read<unknown>(STORAGE_KEYS.devices, STORAGE_VERSION),
-      storageService.read<unknown>(STORAGE_KEYS.settings, STORAGE_VERSION),
-      storageService.read<unknown>(STORAGE_KEYS.history, STORAGE_VERSION),
-      storageService.read<unknown>(STORAGE_KEYS.simulator, STORAGE_VERSION),
-      compareStorageService.read(),
-    ]);
-
-    const parsedDevices = parseDeviceData(deviceData);
-    const parsedSettings = parseSettings(settings) ?? DEFAULT_SETTINGS;
-    const parsedSimulator = parseSimulator(simulator);
-
-    useDeviceStore.getState().hydrate(parsedDevices);
-    useSettingsStore.getState().hydrate(parsedSettings);
-    useHistoryStore.getState().hydrate(parseHistory(history));
-    useSimulatorStore.getState().hydrate(parsedSimulator);
-    useCompareStore.getState().hydrate(compare);
-
-    if (parsedDevices === null) {
-      useDeviceStore.getState().setCurrentDevice(parsedSettings.defaultDeviceId);
-    }
-    if (parsedSimulator === null) {
-      const simulatorState = useSimulatorStore.getState();
-      simulatorState.setScale(
-        isDefaultScale(parsedSettings.defaultScale) ? parsedSettings.defaultScale : 'auto',
-      );
-      simulatorState.setShowShadow(parsedSettings.showShadow);
-      simulatorState.setShowGrid(parsedSettings.showGrid);
-      simulatorState.setLeftPanelCollapsed(parsedSettings.layout.leftPanelCollapsed);
-      simulatorState.setRightPanelCollapsed(parsedSettings.layout.rightPanelCollapsed);
-    }
-    setupSubscriptions();
-  })();
-  return initialization;
 }
 
 export function useStorageReady(): { ready: boolean; error: string } {
@@ -229,7 +133,8 @@ export function useStorageReady(): { ready: boolean; error: string } {
 
   useEffect(() => {
     let active = true;
-    void initializeStores()
+    initialization ??= initialize();
+    void initialization
       .then(() => {
         if (active) setReady(true);
       })
