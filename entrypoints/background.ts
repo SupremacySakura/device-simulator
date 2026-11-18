@@ -1,8 +1,9 @@
 import { browser } from 'wxt/browser';
 import { SYSTEM_DEVICES } from '../constants/default-devices';
+import { STORAGE_KEYS } from '../constants/storage-keys';
 import { createCdpClient, DebuggerAttachError } from '../services/cdp-service';
 import { mountToolbar, type ToolbarInit } from '../services/toolbar-inject';
-import type { DeviceOrientation } from '../types/device';
+import type { DeviceOrientation, DeviceProfile } from '../types/device';
 import { clampManualScale } from '../utils/device-scale';
 import {
   getOrientedViewport,
@@ -65,8 +66,40 @@ const cdp = createCdpClient({
     browser.debugger.sendCommand(target, method, params ?? {}),
 });
 
-function findDevice(deviceId: string) {
-  return SYSTEM_DEVICES.find((device) => device.id === deviceId) ?? SYSTEM_DEVICES[0]!;
+let customDevices: DeviceProfile[] = [];
+
+/** 读取用户保存的自定义设备，使工具条里能选到它们。 */
+async function loadCustomDevices(): Promise<void> {
+  try {
+    const stored = await browser.storage.local.get(STORAGE_KEYS.devices);
+    const raw = stored[STORAGE_KEYS.devices] as { data?: { customDevices?: unknown } } | undefined;
+    const list = raw?.data?.customDevices;
+    if (!Array.isArray(list)) return;
+    customDevices = list.filter(isCustomDevice);
+  } catch {
+    /* 读取失败时只用系统设备 */
+  }
+}
+
+function isCustomDevice(value: unknown): value is DeviceProfile {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Partial<DeviceProfile>;
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.name === 'string' &&
+    typeof candidate.portrait === 'object' &&
+    candidate.portrait !== null &&
+    typeof candidate.landscape === 'object' &&
+    candidate.landscape !== null
+  );
+}
+
+function allDevices(): DeviceProfile[] {
+  return [...SYSTEM_DEVICES, ...customDevices];
+}
+
+function findDevice(deviceId: string): DeviceProfile {
+  return allDevices().find((device) => device.id === deviceId) ?? SYSTEM_DEVICES[0]!;
 }
 
 function toolbarInit(
@@ -77,7 +110,7 @@ function toolbarInit(
   const viewport = getOrientedViewport(device, session.orientation);
   const zoom = resolveZoom(viewport, windowSize, session.zoomMode, session.manualScale);
   return {
-    devices: SYSTEM_DEVICES.map(({ id, name }) => ({ id, name })),
+    devices: allDevices().map(({ id, name }) => ({ id, name })),
     currentDeviceId: device.id,
     orientation: session.orientation,
     zoomPercent: Math.round(zoom * 100),
@@ -85,17 +118,33 @@ function toolbarInit(
   };
 }
 
+/**
+ * 读取标签页可用的内容区尺寸。窗口外框包含标签栏与地址栏，
+ * 直接用它会高估可用高度（约 80–110px），导致设备底部被裁掉。
+ */
 async function readWindowSize(tabId: number): Promise<{ width: number; height: number }> {
+  try {
+    const [result] = await browser.scripting.executeScript({
+      target: { tabId },
+      func: () => ({ width: window.innerWidth, height: window.innerHeight }),
+    });
+    const size = result?.result;
+    if (size && typeof size.width === 'number' && typeof size.height === 'number') {
+      return size;
+    }
+  } catch {
+    /* 页面不可脚本化时回落到窗口尺寸 */
+  }
   try {
     const tab = await browser.tabs.get(tabId);
     if (tab.windowId !== undefined) {
       const win = await browser.windows.get(tab.windowId);
       if (typeof win.width === 'number' && typeof win.height === 'number') {
-        return { width: win.width, height: win.height };
+        return { width: win.width, height: win.height - 96 };
       }
     }
   } catch {
-    /* 窗口信息不可用时回落到保守值 */
+    /* 忽略 */
   }
   return { width: 1280, height: 800 };
 }
@@ -120,6 +169,7 @@ async function notifyToolbar(tabId: number, session: PreviewSession): Promise<vo
 }
 
 async function startPreview(tabId: number): Promise<void> {
+  await loadCustomDevices();
   if (await getSession(tabId)) {
     await stopPreview(tabId);
     return;
@@ -141,8 +191,23 @@ async function startPreview(tabId: number): Promise<void> {
   }
   sessions.set(tabId, session);
   await persistSessions();
-  await applySession(session);
-  await notifyToolbar(tabId, session);
+  try {
+    await applySession(session);
+    await notifyToolbar(tabId, session);
+  } catch (error) {
+    // 已附加但命令失败会留下「视口已改、工具条缺失」的页面，
+    // 必须回滚到干净状态，而不是留一个用户退不出的预览。
+    console.warn('[device-simulator] 应用模拟失败，已回滚', error);
+    sessions.delete(tabId);
+    await persistSessions();
+    try {
+      await cdp.clearEmulation(tabId);
+    } catch {
+      /* 忽略 */
+    }
+    await cdp.detach(tabId);
+    await mountErrorToolbar(tabId, '无法在此页面应用设备模拟，请刷新页面后重试。');
+  }
 }
 
 async function isAttached(tabId: number): Promise<boolean> {
@@ -274,7 +339,7 @@ export default defineBackground(() => {
       case 'SELECT_DEVICE': {
         const rawDeviceId = data.payload?.['deviceId'];
         const deviceId = typeof rawDeviceId === 'string' ? rawDeviceId : '';
-        if (SYSTEM_DEVICES.some((device) => device.id === deviceId)) {
+        if (allDevices().some((device) => device.id === deviceId)) {
           void queueUpdate(tabId, () =>
             updateSession(tabId, (session) => {
               session.deviceId = deviceId;
@@ -315,7 +380,15 @@ export default defineBackground(() => {
 
   browser.debugger.onDetach.addListener((source) => {
     if (source.tabId === undefined) return;
-    sessions.delete(source.tabId);
+    const tabId = source.tabId;
+    sessions.delete(tabId);
     void persistSessions();
+    // 调试器被外部接管（例如用户打开了 DevTools）后，工具条按钮已无意义。
+    void browser.scripting
+      .executeScript({
+        target: { tabId },
+        func: () => document.getElementById('device-simulator-toolbar')?.remove(),
+      })
+      .catch(() => undefined);
   });
 });

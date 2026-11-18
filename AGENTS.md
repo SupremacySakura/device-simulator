@@ -2,9 +2,13 @@
 
 ## 项目结构与模块组织
 
-本项目是使用 React、TypeScript 和 WXT 构建的浏览器扩展。入口位于 `entrypoints/`：`popup/` 用于启动模拟器，`simulator/` 是主工作台，`demo/` 提供离线示例，根目录下的 background/content 脚本负责协调扩展行为。可复用 UI 按职责存放在 `components/`。
+本项目是使用 React、TypeScript 和 WXT 构建的浏览器扩展。入口位于 `entrypoints/`：`background.ts` 负责图标点击、CDP 会话与工具条更新，`simulator/` 是输入地址的独立入口（通过 `options_ui` 打开）。目标页的悬浮工具条以自包含函数形式注入，不依赖 React。
+
+模拟通过 `chrome.debugger` 的 DevTools 协议完成（见 `docs/adr/0006`）。这决定了几个不可动摇的边界：不绘制设备外壳、DevTools 已打开时无法附加、必须声明 `debugger` 权限。
 
 状态放在 `stores/`，浏览器 API 与持久化边界放在 `services/`，共享逻辑放在 `utils/`，规范数据类型放在 `types/`。默认值归入 `constants/`，可复用 React 行为归入 `hooks/`，单元测试统一放在 `tests/`。不要编辑或提交自动生成的 `.output/` 和 `.wxt/` 文件。
+
+`services/toolbar-inject.ts` 里注入的函数会被 `scripting.executeScript` 序列化，必须自包含——不能引用模块作用域的导入或变量。
 
 ## 构建、测试与开发命令
 

@@ -31,7 +31,7 @@ export function mountToolbar(init: ToolbarInit): void {
   style.textContent = `
     :host { all: initial; }
     .bar {
-      position: fixed; top: 8px; left: 50%; transform: translateX(-50%) translateY(-120%);
+      position: fixed; top: 8px; left: 50%; transform: translateX(-50%) translateY(-160%);
       display: flex; align-items: center; gap: 2px;
       padding: 4px; border-radius: 10px;
       background: rgba(255,255,255,0.92);
@@ -39,11 +39,14 @@ export function mountToolbar(init: ToolbarInit): void {
       box-shadow: 0 4px 16px rgba(0,0,0,0.10);
       font: 500 12px/1 Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
       color: #111; pointer-events: auto;
-      opacity: 0; transition: opacity .16s ease-out, transform .16s ease-out;
+      opacity: 0; visibility: hidden;
+      transition: opacity .16s ease-out, transform .16s ease-out, visibility .16s;
       backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
     }
-    .bar.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
-    .zone { position: fixed; top: 0; left: 0; right: 0; height: 28px; pointer-events: auto; }
+    .bar.visible { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
+    .zone { position: fixed; top: 0; left: 50%; transform: translateX(-50%);
+            width: 320px; height: 16px; pointer-events: auto; }
+    .zone.gone { display: none; }
     select, button {
       all: unset; box-sizing: border-box; cursor: pointer;
       padding: 6px 8px; border-radius: 6px; font: inherit; color: inherit;
@@ -52,11 +55,15 @@ export function mountToolbar(init: ToolbarInit): void {
     }
     select:hover, button:hover { background: rgba(17,17,17,0.06); }
     button:active { background: rgba(17,17,17,0.10); }
-    button:focus-visible, select:focus-visible { outline: 2px solid #FF5500; outline-offset: 1px; }
-    select { max-width: 160px; }
+    button:focus-visible, select:focus-visible { outline: 2px solid #C2410C; outline-offset: 1px; }
+    select {
+      max-width: 160px; appearance: auto; -webkit-appearance: menulist;
+      padding-right: 4px;
+    }
     .sep { width: 1px; height: 16px; background: rgba(17,17,17,0.10); margin: 0 2px; }
     .pct { min-width: 38px; text-align: center; font-variant-numeric: tabular-nums; padding: 6px 0; }
-    .close { color: #FF5500; }
+    .close { color: #C2410C; }
+    .on { background: rgba(194, 65, 12, 0.12); color: #9A3412; }
     .msg {
       position: fixed; top: 52px; left: 50%; transform: translateX(-50%);
       padding: 6px 12px; border-radius: 8px; font: 500 12px/1.4 Inter, system-ui, sans-serif;
@@ -105,6 +112,8 @@ export function mountToolbar(init: ToolbarInit): void {
   auto.type = 'button';
   auto.textContent = '适应';
   auto.setAttribute('aria-label', '自动适应窗口');
+  if (init.autoZoom) auto.classList.add('on');
+  auto.setAttribute('aria-pressed', String(init.autoZoom));
 
   const sep = document.createElement('div');
   sep.className = 'sep';
@@ -137,45 +146,57 @@ export function mountToolbar(init: ToolbarInit): void {
   };
 
   let hideTimer: number | undefined;
+  const setVisible = (visible: boolean) => {
+    bar.classList.toggle('visible', visible);
+    zone.classList.toggle('gone', visible);
+    // 隐藏时移出 Tab 序列，避免键盘用户聚焦到看不见的控件。
+    for (const el of [select, rotate, minus, plus, auto, close]) {
+      el.tabIndex = visible ? 0 : -1;
+    }
+  };
   const show = () => {
-    bar.classList.add('visible');
+    setVisible(true);
     if (hideTimer) window.clearTimeout(hideTimer);
-    hideTimer = window.setTimeout(() => bar.classList.remove('visible'), 2200);
+    hideTimer = window.setTimeout(() => setVisible(false), 2200);
   };
   const keepVisible = () => {
-    bar.classList.add('visible');
+    setVisible(true);
     if (hideTimer) window.clearTimeout(hideTimer);
   };
 
   zone.addEventListener('mouseenter', keepVisible);
+  zone.addEventListener('click', keepVisible);
   bar.addEventListener('mouseenter', keepVisible);
+  bar.addEventListener('focusin', keepVisible);
   bar.addEventListener('mouseleave', () => {
-    hideTimer = window.setTimeout(() => bar.classList.remove('visible'), 600);
+    hideTimer = window.setTimeout(() => setVisible(false), 600);
+  });
+  bar.addEventListener('focusout', (event) => {
+    if (!bar.contains(event.relatedTarget as Node | null)) {
+      hideTimer = window.setTimeout(() => setVisible(false), 600);
+    }
   });
 
   select.addEventListener('change', () => send('SELECT_DEVICE', { deviceId: select.value }));
   rotate.addEventListener('click', () => send('TOGGLE_ORIENTATION'));
-  minus.addEventListener('click', () => send('STEP_ZOOM', { direction: -1 }));
-  plus.addEventListener('click', () => send('STEP_ZOOM', { direction: 1 }));
-  auto.addEventListener('click', () => send('AUTO_ZOOM'));
+  const markManual = () => {
+    auto.classList.remove('on');
+    auto.setAttribute('aria-pressed', 'false');
+  };
+  minus.addEventListener('click', () => {
+    markManual();
+    send('STEP_ZOOM', { direction: -1 });
+  });
+  plus.addEventListener('click', () => {
+    markManual();
+    send('STEP_ZOOM', { direction: 1 });
+  });
+  auto.addEventListener('click', () => {
+    auto.classList.add('on');
+    auto.setAttribute('aria-pressed', 'true');
+    send('AUTO_ZOOM');
+  });
   close.addEventListener('click', () => send('EXIT'));
-
-  window.addEventListener('device-simulator:update', (event) => {
-    const detail = (event as CustomEvent).detail as Partial<ToolbarInit> | undefined;
-    if (!detail) return;
-    if (detail.currentDeviceId) select.value = detail.currentDeviceId;
-    if (detail.orientation)
-      rotate.textContent = detail.orientation === 'portrait' ? '竖屏' : '横屏';
-    if (typeof detail.zoomPercent === 'number') pct.textContent = `${detail.zoomPercent}%`;
-  });
-
-  window.addEventListener('device-simulator:message', (event) => {
-    const detail = (event as CustomEvent).detail as { text?: string } | undefined;
-    if (!detail?.text) return;
-    msg.textContent = detail.text;
-    msg.classList.add('visible');
-    window.setTimeout(() => msg.classList.remove('visible'), 3200);
-  });
 
   document.documentElement.appendChild(host);
   show();

@@ -69,11 +69,11 @@ export function createCdpClient(sender: CdpSender) {
         scale: metrics.scale,
         screenOrientation: metrics.screenOrientation,
       });
-      if (safeArea) {
-        await sender.sendCommand({ tabId }, 'Emulation.setSafeAreaInsetsOverride', {
-          insets: safeArea,
-        });
-      }
+      // 零安全区也必须显式归零，否则从有刘海的设备切到无刘海的设备时，
+      // 上一次的 env(safe-area-inset-*) 会残留。
+      await sender.sendCommand({ tabId }, 'Emulation.setSafeAreaInsetsOverride', {
+        insets: safeArea ?? { top: 0, right: 0, bottom: 0, left: 0 },
+      });
     },
 
     async clearEmulation(tabId: number): Promise<void> {

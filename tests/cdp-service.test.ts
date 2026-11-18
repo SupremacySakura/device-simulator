@@ -46,15 +46,17 @@ describe('cdp client', () => {
     );
   });
 
-  it('安全区为 null 时不发送覆盖命令', async () => {
+  it('零安全区显式归零，避免上一台设备的刘海残留', async () => {
     const sender = fakeSender();
     const client = createCdpClient(sender);
 
     await client.applyEmulation(7, metrics, null);
 
-    const calls = sender.sendCommand.mock.calls as Array<[{ tabId: number }, string, unknown]>;
-    const methods = calls.map((call) => call[1]);
-    expect(methods).not.toContain('Emulation.setSafeAreaInsetsOverride');
+    expect(sender.sendCommand).toHaveBeenCalledWith(
+      { tabId: 7 },
+      'Emulation.setSafeAreaInsetsOverride',
+      { insets: { top: 0, right: 0, bottom: 0, left: 0 } },
+    );
   });
 
   it('DevTools 占用时给出可操作的中文提示', async () => {

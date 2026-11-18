@@ -16,7 +16,7 @@ web
 
 ## Positioning
 
-比 Chrome DevTools 设备模拟**更快、更不打断**:DevTools 需要打开面板、切换模式、手动改尺寸，且会重新挂载页面；本扩展通过直接 DOM 变换在当前页注入，页面状态（滚动位置、表单内容、HMR 连接）完整保留。真实设备外壳、安全区、刘海是"不打断"的自然副产品，不是独立卖点。
+比 Chrome DevTools 设备模拟**更快、更不打断**:DevTools 需要打开面板、切换模式、手动改尺寸；本扩展点一次图标就通过 DevTools 协议把当前标签页切到设备视口，页面不重新加载，滚动位置、表单内容与 HMR 连接完整保留。真实 `env(safe-area-inset-*)` 是这一路线的自然结果。
 
 ## Operating Context
 
@@ -31,8 +31,9 @@ web
 - 自定义设备仅支持名称、视口宽高、安全区四值（无 DPR、无外壳、无摄像头装饰）
 - 横竖屏切换：系统设备双方向独立建模，自定义设备安全区简单旋转
 - 缩放：自动适应 + 手动微调 + 居中，无小手模式与快捷键
-- `position: fixed` 元素通过缩放容器的 transform 自然成为其 containing block
-- 无法注入 `chrome://` 等浏览器保护页面，此时提供独立工作台入口
+- 通过 `chrome.debugger` 的 `Emulation.setDeviceMetricsOverride` 与 `setSafeAreaInsetsOverride` 实现真实视口与安全区
+- 无法预览 `chrome://` 等浏览器保护页面；DevTools 已打开时无法附加调试器
+- 不绘制设备外壳：CDP 把整个视口换成设备尺寸，视口之外属于浏览器
 
 ## Brand Commitments
 

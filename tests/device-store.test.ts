@@ -58,13 +58,18 @@ describe('device store', () => {
 });
 
 describe('rotateSafeArea', () => {
-  it('逆时针旋转安全区四值', () => {
+  it('顺时针旋转：上边缘转到右边缘，与 CDP 横屏方向一致', () => {
     expect(rotateSafeArea({ top: 1, right: 2, bottom: 3, left: 4 })).toEqual({
-      top: 2,
-      right: 3,
-      bottom: 4,
-      left: 1,
+      top: 4,
+      right: 1,
+      bottom: 2,
+      left: 3,
     });
+  });
+
+  it('与系统设备的横屏安全区保持一致', () => {
+    const iphone = SYSTEM_DEVICES.find((device) => device.id === 'iphone-15')!;
+    expect(rotateSafeArea(iphone.portrait.safeArea)).toEqual(iphone.landscape.safeArea);
   });
 });
 
@@ -81,7 +86,7 @@ describe('buildCustomDevice', () => {
     );
     expect(device.landscape.width).toBe(900);
     expect(device.landscape.height).toBe(400);
-    expect(device.landscape.safeArea).toEqual({ top: 0, right: 20, bottom: 0, left: 30 });
+    expect(device.landscape.safeArea).toEqual({ top: 0, right: 30, bottom: 0, left: 20 });
     expect(device.isSystem).toBe(false);
   });
 });
